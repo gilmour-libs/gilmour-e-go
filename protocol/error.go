@@ -5,38 +5,38 @@ import (
 )
 
 type GilmourError struct {
-	Topic        string
-	RequestData  string
-	UserData     string
-	Sender       string
-	MultiProcess bool
-	Timestamp    string
-	Backtrace    interface{}
-	Code         int
+	topic        string
+	requestData  string
+	userData     string
+	sender       string
+	multiProcess bool
+	timestamp    string
+	backtrace    interface{}
+	code         int
 }
 
 func (self *GilmourError) GetTopic() string {
-	return self.Topic
+	return self.topic
 }
 
 func (self *GilmourError) GetSender() string {
-	return self.Sender
+	return self.sender
 }
 
 func (self *GilmourError) GetRequestData() string {
-	return self.RequestData
+	return self.requestData
 }
 
 func (self *GilmourError) GetUserData() string {
-	return self.UserData
+	return self.userData
 }
 
 func (self *GilmourError) GetCode() int {
-	return self.Code
+	return self.code
 }
 
 func (self *GilmourError) GetBacktrace() interface{} {
-	return self.Backtrace
+	return self.backtrace
 }
 
 func MakeError(
@@ -45,12 +45,12 @@ func MakeError(
 ) *GilmourError {
 
 	return &GilmourError{
-		Code:        code,
-		Topic:       topic,
-		RequestData: requestData,
-		UserData:    userData,
-		Backtrace:   backtrace,
-		Timestamp:   time.Now().Format(time.RFC3339),
-		Sender:      sender,
+		code:        code,
+		topic:       topic,
+		requestData: requestData,
+		userData:    userData,
+		backtrace:   backtrace,
+		timestamp:   time.Now().Format(time.RFC3339),
+		sender:      sender,
 	}
 }
