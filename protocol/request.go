@@ -4,40 +4,40 @@ import (
 	"encoding/json"
 )
 
-type GilmourRequest struct {
+type Request struct {
 	data   interface{} `json:"data"`
 	code   int         `json:"code"`
 	sender string      `json:"sender"`
 }
 
-func (self *GilmourRequest) GetData() interface{} {
+func (self *Request) GetData() interface{} {
 	return self.data
 }
 
-func (self *GilmourRequest) SetData(data interface{}) {
+func (self *Request) SetData(data interface{}) {
 	self.data = data
 }
 
-func (self *GilmourRequest) GetCode() int {
+func (self *Request) GetCode() int {
 	return self.code
 }
 
-func (self *GilmourRequest) SetCode(code int) {
+func (self *Request) SetCode(code int) {
 	self.code = code
 }
 
-func (self *GilmourRequest) GetSender() string {
+func (self *Request) GetSender() string {
 	return self.sender
 }
 
-func (self *GilmourRequest) SetSender(sender string) {
+func (self *Request) SetSender(sender string) {
 	self.sender = sender
 }
 
-func (self *GilmourRequest) Render() ([]byte, error) {
+func (self *Request) Render() ([]byte, error) {
 	return json.Marshal(self)
 }
 
-func MakeRequest(code int, sender string, data string) *GilmourRequest {
-	return &GilmourRequest{code: code, data: data, sender: sender}
+func MakeRequest(code int, sender string, data string) *Request {
+	return &Request{code: code, data: data, sender: sender}
 }

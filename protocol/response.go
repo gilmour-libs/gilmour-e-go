@@ -10,27 +10,27 @@ type jsonData struct {
 	Sender string          `json:"sender"`
 }
 
-type GilmourResponse struct {
-	jsonData
+type RequestResponse struct {
+	jsonData jsonData
 }
 
-func (self *GilmourResponse) GetData(t interface{}) error {
+func (self *RequestResponse) GetData(t interface{}) error {
 	return json.Unmarshal(self.jsonData.Data, t)
 }
 
-func (self *GilmourResponse) RawData() []byte {
+func (self *RequestResponse) RawData() []byte {
 	return self.jsonData.Data
 }
 
-func (self *GilmourResponse) GetCode() int {
+func (self *RequestResponse) GetCode() int {
 	return self.jsonData.Code
 }
 
-func (self *GilmourResponse) GetSender() string {
+func (self *RequestResponse) GetSender() string {
 	return self.jsonData.Sender
 }
 
-func ParseResponse(data string) (resp *GilmourResponse, err error) {
+func ParseResponse(data string) (resp *RequestResponse, err error) {
 	err = json.Unmarshal([]byte(data), &resp.jsonData)
 	return
 }

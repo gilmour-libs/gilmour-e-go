@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-type GilmourError struct {
+type Error struct {
 	topic        string
 	requestData  string
 	userData     string
@@ -15,36 +15,36 @@ type GilmourError struct {
 	code         int
 }
 
-func (self *GilmourError) GetTopic() string {
+func (self *Error) GetTopic() string {
 	return self.topic
 }
 
-func (self *GilmourError) GetSender() string {
+func (self *Error) GetSender() string {
 	return self.sender
 }
 
-func (self *GilmourError) GetRequestData() string {
+func (self *Error) GetRequestData() string {
 	return self.requestData
 }
 
-func (self *GilmourError) GetUserData() string {
+func (self *Error) GetUserData() string {
 	return self.userData
 }
 
-func (self *GilmourError) GetCode() int {
+func (self *Error) GetCode() int {
 	return self.code
 }
 
-func (self *GilmourError) GetBacktrace() interface{} {
+func (self *Error) GetBacktrace() interface{} {
 	return self.backtrace
 }
 
 func MakeError(
 	code int,
 	sender, topic, requestData, userData, backtrace string,
-) *GilmourError {
+) *Error {
 
-	return &GilmourError{
+	return &Error{
 		code:        code,
 		topic:       topic,
 		requestData: requestData,
