@@ -7,17 +7,18 @@ import (
 type GilmourBackend interface {
 	Start()
 	Stop()
-	Subscribe(topic string, h *Handler, opts *HandlerOpts) *Subscription
-	UnSubscribe(topic string)
-	publish(topic string, msg protocol.Messenger)
-	AcquireGroupLock(group string, sender string)
+
 	responseTopic(sender string) string
+	subscribe(topic string, opts *HandlerOpts) error
+	unsubscribe(topic string) error
+	publish(topic string, msg interface{}) error
+	reportError(method string, err *protocol.Error) error
+
+	AcquireGroupLock(group string, sender string)
 	HealthTopic(ident string) string
 	GetIdent() string
 	RegisterIdent()
 	UnRegisterIdent()
-	CanReportErrors() bool
-	ReportError(err *protocol.Error)
 	EnableHealthCheck()
 }
 

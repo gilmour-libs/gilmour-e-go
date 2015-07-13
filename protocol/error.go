@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+const QUEUE = "queue"
+const PUBLISH = "publish"
+const BLANK = ""
+
 type Error struct {
 	topic        string
 	requestData  string
