@@ -22,10 +22,14 @@ func getUUID() string {
 	return uuid.New()
 }
 
-func MakeSenderId() string {
+func MakeIdent() string {
 	hostname := getHostname()
 	pid := getPid()
 	uuid := getUUID()
 
 	return fmt.Sprintf("%v-pid-%v-uuid-%v", hostname, pid, uuid)
+}
+
+func MakeSenderId() string {
+	return getUUID()
 }

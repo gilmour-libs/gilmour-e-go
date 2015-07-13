@@ -4,14 +4,14 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
 )
 
-type Gilmer interface {
+type GilmourBackend interface {
 	Start()
 	Stop()
 	Subscribe(topic string, h *Handler, opts *HandlerOpts) *Subscription
 	UnSubscribe(topic string)
-	Publish(topic string, response *protocol.RequestResponse)
+	publish(topic string, msg protocol.Messenger)
 	AcquireGroupLock(group string, sender string)
-	ResponseTopic(sender string) string
+	responseTopic(sender string) string
 	HealthTopic(ident string) string
 	GetIdent() string
 	RegisterIdent()
@@ -19,4 +19,10 @@ type Gilmer interface {
 	CanReportErrors() bool
 	ReportError(err *protocol.Error)
 	EnableHealthCheck()
+}
+
+type PublishOpts struct {
+	Data    interface{}
+	Code    int
+	Handler *Handler
 }

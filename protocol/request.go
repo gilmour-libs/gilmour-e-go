@@ -4,40 +4,39 @@ import (
 	"encoding/json"
 )
 
-type Request struct {
+type Data struct {
 	data   interface{} `json:"data"`
 	code   int         `json:"code"`
 	sender string      `json:"sender"`
 }
 
-func (self *Request) GetData() interface{} {
+func (self *Data) GetData() interface{} {
 	return self.data
 }
 
-func (self *Request) SetData(data interface{}) {
+func (self *Data) SetData(data interface{}) *Data {
 	self.data = data
+	return self
 }
 
-func (self *Request) GetCode() int {
+func (self *Data) GetCode() int {
 	return self.code
 }
 
-func (self *Request) SetCode(code int) {
+func (self *Data) SetCode(code int) *Data {
 	self.code = code
+	return self
 }
 
-func (self *Request) GetSender() string {
+func (self *Data) GetSender() string {
 	return self.sender
 }
 
-func (self *Request) SetSender(sender string) {
+func (self *Data) SetSender(sender string) *Data {
 	self.sender = sender
+	return self
 }
 
-func (self *Request) Render() ([]byte, error) {
+func (self *Data) Marshal() ([]byte, error) {
 	return json.Marshal(self)
-}
-
-func MakeRequest(code int, sender string, data string) *Request {
-	return &Request{code: code, data: data, sender: sender}
 }

@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -37,6 +38,10 @@ func (self *Error) GetCode() int {
 
 func (self *Error) GetBacktrace() interface{} {
 	return self.backtrace
+}
+
+func (self *Error) Marshal() ([]byte, error) {
+	return json.Marshal(self)
 }
 
 func MakeError(
