@@ -7,6 +7,12 @@ import (
 	"sync"
 )
 
+func Get() *Gilmour {
+	x := Gilmour{}
+	x.subscribers = map[string][]*Subscription{}
+	return &x
+}
+
 type Gilmour struct {
 	enableHealthCheck bool
 	identMutex        sync.RWMutex
