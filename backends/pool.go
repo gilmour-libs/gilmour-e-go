@@ -1,4 +1,4 @@
-package gilmour
+package backends
 
 import (
 	"github.com/garyburd/redigo/redis"

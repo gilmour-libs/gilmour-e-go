@@ -15,7 +15,7 @@ func (self *HandlerOpts) SetGroup(group string) *HandlerOpts {
 	return self
 }
 
-func (self *HandlerOpts) IsSendResponse() bool {
+func (self *HandlerOpts) ShouldSendResponse() bool {
 	return self.sendResponse
 }
 

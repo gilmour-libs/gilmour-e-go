@@ -8,10 +8,43 @@ import (
 )
 
 type Gilmour struct {
-	subscriberMutex sync.RWMutex
-	backend         GilmourBackend
-	errorMethod     string
-	subscribers     map[string][]*Subscription
+	enableHealthCheck bool
+	identMutex        sync.RWMutex
+	subscriberMutex   sync.RWMutex
+	backend           GilmourBackend
+	ident             string
+	errorMethod       string
+	subscribers       map[string][]*Subscription
+}
+
+func (self *Gilmour) GetIdent() string {
+	self.identMutex.Lock()
+	defer self.identMutex.Unlock()
+
+	if self.ident == protocol.BLANK {
+		self.ident = protocol.MakeIdent()
+	}
+
+	return self.ident
+}
+
+func (self *Gilmour) RegisterIdent() {
+	ident := self.GetIdent()
+	self.backend.RegisterIdent(ident)
+}
+
+func (self *Gilmour) UnregisterIdent() {
+	ident := self.GetIdent()
+	self.backend.UnregisterIdent(ident)
+}
+
+func (self *Gilmour) IsHealthCheckEnabled() bool {
+	return self.enableHealthCheck
+}
+
+func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
+	self.enableHealthCheck = true
+	return self
 }
 
 func (self *Gilmour) removeSubscribers(topic string) (err error) {
@@ -54,8 +87,7 @@ func (self *Gilmour) addSubscriber(topic string, h *Handler, opts *HandlerOpts) 
 	self.subscriberMutex.Lock()
 	defer self.subscriberMutex.Unlock()
 
-	list, ok := self.subscribers[topic]
-	if !ok {
+	if _, ok := self.subscribers[topic]; !ok {
 		self.subscribers[topic] = []*Subscription{}
 	}
 
@@ -69,7 +101,7 @@ func (self *Gilmour) addSubscriber(topic string, h *Handler, opts *HandlerOpts) 
 
 func (self *Gilmour) Subscribe(topic string, h *Handler, opts *HandlerOpts) *Subscription {
 	if _, ok := self.subscribers[topic]; !ok {
-		self.backend.subscribe(topic, opts)
+		self.backend.Subscribe(topic, opts)
 	}
 
 	return self.addSubscriber(topic, h, opts)
@@ -77,11 +109,9 @@ func (self *Gilmour) Subscribe(topic string, h *Handler, opts *HandlerOpts) *Sub
 
 func (self *Gilmour) UnSubscribe(topic string, s *Subscription) {
 	var err error
-	var new_length int
 
-	new_length, err = self.removeSubscriber(topic, s)
 	if err == nil {
-		err = self.backend.unsubscribe(topic)
+		err = self.backend.Unsubscribe(topic)
 	}
 
 	if err != nil {
@@ -114,16 +144,22 @@ func (self *Gilmour) GetErrorMethod() string {
 }
 
 func (self *Gilmour) ReportError(message *protocol.Error) {
-	err := self.backend.reportError(self.GetErrorMethod(), message)
+	err := self.backend.ReportError(self.GetErrorMethod(), message)
 	if err != nil {
 		panic(err)
 	}
 }
 
 func (self *Gilmour) Publish(topic string, opts *PublishOpts) string {
+	//Publish the message
+
 	sender := protocol.MakeSenderId()
+	//Always generate a senderId for the message being sent out
+
 	if opts.Handler != nil {
-		respChannel := self.backend.responseTopic(sender)
+		//If a handler is being supplied, subscribe to a response
+		respChannel := self.backend.ResponseTopic(sender)
+		//Wait for a responseHandler
 		handlerOpts := MakeHandlerOpts().SetOneShot().SetSendResponse(false)
 		self.Subscribe(respChannel, opts.Handler, handlerOpts)
 	}
@@ -132,12 +168,87 @@ func (self *Gilmour) Publish(topic string, opts *PublishOpts) string {
 		opts.Code = 200
 	}
 
-	message := (&protocol.Data{}).SetSender(sender).SetData(opts.Data).SetCode(opts.Code)
+	message := (&protocol.SentRequest{}).SetSender(sender).SetCode(opts.Code).Send(opts.Data)
 
-	err := self.backend.publish(topic, message)
+	err := self.backend.Publish(topic, message)
 	if err != nil {
 		panic(err)
 	}
 
 	return sender
+}
+
+func (self *Gilmour) processMessage(msg *protocol.Message) {
+	subs, ok := self.subscribers[msg.Key]
+	if !ok || len(subs) == 0 {
+		fmt.Println("No subs found!! Key: " + msg.Key)
+		return
+	}
+
+	for _, s := range subs {
+		if s.GetOpts().IsOneShot() {
+			self.removeSubscriber(msg.Key, s)
+		}
+
+		self.executeSubscriber(s, msg.Topic, msg.Data)
+	}
+}
+
+func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data interface{}) {
+	d, err := protocol.ParseResponse(data)
+	if err != nil {
+		panic(err)
+	}
+
+	opts := s.GetOpts()
+	if opts.GetGroup() != protocol.BLANK &&
+		!self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
+		return
+	}
+
+	self.handleRequest(s, topic, d)
+}
+
+func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.RecvRequest) {
+	req := NewGilmourRequest(topic, d)
+	res := NewGilmourResponse(self.backend.ResponseTopic(d.GetSender()))
+	//GilmourResponder res = new GilmourResponder(backend.responseTopic(d.getSender()));
+
+	//Executing Request
+	(*s.GetHandler()).Process(req, res)
+	if s.GetOpts().ShouldSendResponse() {
+		var err error
+
+		err = res.Send()
+		if err != nil {
+			panic(err)
+		}
+
+		opts := PublishOpts{res.message, res.code, nil}
+		self.Publish(res.senderchannel, &opts)
+	}
+}
+
+func (self *Gilmour) addConsumer(sink <-chan *protocol.Message) {
+	for {
+		msg := <-sink
+		go self.processMessage(msg)
+	}
+}
+
+func (self *Gilmour) Start() {
+	if self.IsHealthCheckEnabled() {
+		self.RegisterIdent()
+	}
+
+	sink := self.backend.Start()
+	go self.addConsumer(sink)
+}
+
+func (self *Gilmour) Stop() {
+	if self.IsHealthCheckEnabled() {
+		self.UnregisterIdent()
+	}
+
+	self.backend.Stop()
 }

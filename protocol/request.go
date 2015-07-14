@@ -4,39 +4,39 @@ import (
 	"encoding/json"
 )
 
-type Data struct {
-	data   interface{} `json:"data"`
-	code   int         `json:"code"`
-	sender string      `json:"sender"`
+type SentRequest struct {
+	Data   interface{} `json:"data"`
+	Code   int         `json:"code"`
+	Sender string      `json:"sender"`
 }
 
-func (self *Data) GetData() interface{} {
-	return self.data
+func (self *SentRequest) GetData() interface{} {
+	return self.Data
 }
 
-func (self *Data) SetData(data interface{}) *Data {
-	self.data = data
+func (self *SentRequest) Send(data interface{}) *SentRequest {
+	self.Data = data
 	return self
 }
 
-func (self *Data) GetCode() int {
-	return self.code
+func (self *SentRequest) GetCode() int {
+	return self.Code
 }
 
-func (self *Data) SetCode(code int) *Data {
-	self.code = code
+func (self *SentRequest) SetCode(code int) *SentRequest {
+	self.Code = code
 	return self
 }
 
-func (self *Data) GetSender() string {
-	return self.sender
+func (self *SentRequest) GetSender() string {
+	return self.Sender
 }
 
-func (self *Data) SetSender(sender string) *Data {
-	self.sender = sender
+func (self *SentRequest) SetSender(sender string) *SentRequest {
+	self.Sender = sender
 	return self
 }
 
-func (self *Data) Marshal() ([]byte, error) {
+func (self *SentRequest) Marshal() ([]byte, error) {
 	return json.Marshal(self)
 }

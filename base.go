@@ -5,21 +5,20 @@ import (
 )
 
 type GilmourBackend interface {
-	Start()
+	Start() chan *protocol.Message
 	Stop()
 
-	responseTopic(sender string) string
-	subscribe(topic string, opts *HandlerOpts) error
-	unsubscribe(topic string) error
-	publish(topic string, msg interface{}) error
-	reportError(method string, err *protocol.Error) error
+	ResponseTopic(sender string) string
+	Subscribe(topic string, opts *HandlerOpts) error
+	Unsubscribe(topic string) error
+	Publish(topic string, msg interface{}) error
+	ReportError(method string, err *protocol.Error) error
 
-	AcquireGroupLock(group string, sender string)
+	AcquireGroupLock(group, sender string) bool
 	HealthTopic(ident string) string
-	GetIdent() string
-	RegisterIdent()
-	UnRegisterIdent()
-	EnableHealthCheck()
+
+	RegisterIdent(uuid string) error
+	UnregisterIdent(uuid string) error
 }
 
 type PublishOpts struct {

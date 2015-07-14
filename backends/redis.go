@@ -1,7 +1,8 @@
-package gilmour
+package backends
 
 import (
 	"errors"
+	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
 	"strings"
@@ -23,14 +24,29 @@ func (self *Redis) getErrorTopic() string {
 	return defaultErrorTopic
 }
 
+func (self *Redis) AcquireGroupLock(group, sender string) bool {
+	key := sender + group
+
+	val, err := self.conn.Do("SET", key, key, "NX", "EX", "600")
+	if err != nil {
+		return false
+	}
+
+	if val == nil {
+		return false
+	}
+
+	return true
+}
+
 func (self *Redis) getErrorQueue() string {
 	return defaultErrorQueue
 }
 
-func (self *Redis) reportError(method string, message *protocol.Error) (err error) {
+func (self *Redis) ReportError(method string, message *protocol.Error) (err error) {
 	switch method {
 	case protocol.PUBLISH:
-		err = self.publish(self.getErrorTopic(), message)
+		err = self.Publish(self.getErrorTopic(), message)
 
 	case protocol.QUEUE:
 		msg, merr := message.Marshal()
@@ -50,7 +66,7 @@ func (self *Redis) reportError(method string, message *protocol.Error) (err erro
 	return err
 }
 
-func (self *Redis) unsubscribe(topic string) (err error) {
+func (self *Redis) Unsubscribe(topic string) (err error) {
 	if strings.HasSuffix(topic, "*") {
 		err = self.pubsub.PUnsubscribe(topic)
 	} else {
@@ -60,7 +76,7 @@ func (self *Redis) unsubscribe(topic string) (err error) {
 	return
 }
 
-func (self *Redis) subscribe(topic string) (err error) {
+func (self *Redis) Subscribe(topic string) (err error) {
 	if strings.HasSuffix(topic, "*") {
 		err = self.pubsub.PSubscribe(topic)
 	} else {
@@ -70,22 +86,66 @@ func (self *Redis) subscribe(topic string) (err error) {
 	return
 }
 
-func (self *Redis) responseTopic(sender string) string {
+func (self *Redis) ResponseTopic(sender string) string {
 	return defaultResponseTopic + "." + sender
 }
 
-func (self *Redis) publish(topic string, message interface{}) error {
+func (self *Redis) Publish(topic string, message interface{}) (err error) {
+	var msg string
 	switch t := message.(type) {
 	case string:
-		// Just use t
+		msg = t
 	case protocol.Messenger:
-		msg, err := t.Marshal()
+		msg2, err2 := t.Marshal()
 		if err != nil {
-			return err
+			err = err2
+		} else {
+			msg = string(msg2)
 		}
 	default:
-		return errors.New("Message can only be String or protocol.Messenger")
+		err = errors.New("Message can only be String or protocol.Messenger")
 	}
 
-	return nil
+	if err != nil {
+		_, err = self.conn.Do("PUBLISH", topic, msg)
+	}
+
+	return
+}
+
+func (self *Redis) RegisterIdent(uuid string) {
+	self.conn.Do("HSET", defaultIdentKey, uuid, "true")
+}
+
+func (self *Redis) UnregisterIdent(uuid string) {
+	self.conn.Do("HDEL", defaultIdentKey, uuid)
+}
+
+func (self *Redis) Start() chan *protocol.Message {
+	return self.setupListeners()
+}
+
+func (self *Redis) setupListeners() chan *protocol.Message {
+	sink := make(chan *protocol.Message) //Add a buffer of 50 messages?
+
+	go func() {
+		for {
+			switch v := self.pubsub.Receive().(type) {
+			case redis.PMessage:
+				msg := &protocol.Message{"pmessage", v.Channel, v.Data, v.Pattern}
+				sink <- msg
+			case redis.Message:
+				msg := &protocol.Message{"message", v.Channel, v.Data, v.Channel}
+				sink <- msg
+			case redis.Subscription:
+				fmt.Printf("%s: %s %d\n", v.Channel, v.Kind, v.Count)
+			case redis.Pong:
+				fmt.Printf("%s: %s %d\n", "Pong", nil, v.Data)
+			case error:
+				fmt.Printf(v.Error())
+			}
+		}
+	}()
+
+	return sink
 }

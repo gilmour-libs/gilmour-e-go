@@ -10,27 +10,38 @@ type jsonData struct {
 	Sender string          `json:"sender"`
 }
 
-type RequestResponse struct {
+type RecvRequest struct {
 	jsonData jsonData
 }
 
-func (self *RequestResponse) GetData(t interface{}) error {
+func (self *RecvRequest) GetData(t interface{}) error {
 	return json.Unmarshal(self.jsonData.Data, t)
 }
 
-func (self *RequestResponse) RawData() []byte {
+func (self *RecvRequest) RawData() []byte {
 	return self.jsonData.Data
 }
 
-func (self *RequestResponse) GetCode() int {
+func (self *RecvRequest) GetCode() int {
 	return self.jsonData.Code
 }
 
-func (self *RequestResponse) GetSender() string {
+func (self *RecvRequest) GetSender() string {
 	return self.jsonData.Sender
 }
 
-func ParseResponse(data string) (resp *RequestResponse, err error) {
-	err = json.Unmarshal([]byte(data), &resp.jsonData)
+func ParseResponse(data interface{}) (resp *RecvRequest, err error) {
+	var msg []byte
+
+	switch t := data.(type) {
+	case string:
+		msg = []byte(t)
+	case []byte:
+		msg = t
+	case json.RawMessage:
+		msg = t
+	}
+
+	err = json.Unmarshal(msg, &resp.jsonData)
 	return
 }
