@@ -9,26 +9,26 @@ type GilmourRequest struct {
 	gData *protocol.RecvRequest
 }
 
-func (self Request) Sender() string {
+func (self *GilmourRequest) Sender() string {
 	return self.gData.GetSender()
 }
 
-func (self Request) Data(t interface{}) {
+func (self *GilmourRequest) Data(t interface{}) {
 	self.gData.GetData(t)
 }
 
-func (self Request) Topic() string {
+func (self *GilmourRequest) Topic() string {
 	return self.topic
 }
 
-func (self Request) Code() int {
+func (self *GilmourRequest) Code() int {
 	return self.gData.GetCode()
 }
 
-func (self Request) StringData() []byte {
+func (self *GilmourRequest) StringData() []byte {
 	return self.gData.RawData()
 }
 
-func NewGilmourRequest(t string, gd *protocol.RecvRequest) Request {
+func NewGilmourRequest(t string, gd *protocol.RecvRequest) *GilmourRequest {
 	return &GilmourRequest{t, gd}
 }
