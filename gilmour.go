@@ -93,7 +93,7 @@ func (self *Gilmour) removeSubscriber(topic string, s *Subscription) (length int
 	return
 }
 
-func (self *Gilmour) addSubscriber(topic string, h *Handler, opts *HandlerOpts) *Subscription {
+func (self *Gilmour) addSubscriber(topic string, h Handler, opts *HandlerOpts) *Subscription {
 	self.subscriberMutex.Lock()
 	defer self.subscriberMutex.Unlock()
 
@@ -109,7 +109,7 @@ func (self *Gilmour) addSubscriber(topic string, h *Handler, opts *HandlerOpts) 
 	return sub
 }
 
-func (self *Gilmour) Subscribe(topic string, h *Handler, opts *HandlerOpts) *Subscription {
+func (self *Gilmour) Subscribe(topic string, h Handler, opts *HandlerOpts) *Subscription {
 	if _, ok := self.subscribers[topic]; !ok {
 		self.backend.Subscribe(topic)
 	}
@@ -225,7 +225,7 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 	//GilmourResponder res = new GilmourResponder(backend.responseTopic(d.getSender()));
 
 	//Executing Request
-	(*s.GetHandler()).Process(req, res)
+	s.GetHandler()(req, res)
 	if s.GetOpts().ShouldSendResponse() {
 		var err error
 

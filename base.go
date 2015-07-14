@@ -23,5 +23,5 @@ type GilmourBackend interface {
 type PublishOpts struct {
 	Data    interface{}
 	Code    int
-	Handler *Handler
+	Handler Handler
 }

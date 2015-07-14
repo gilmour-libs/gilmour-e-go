@@ -1,5 +1,3 @@
 package gilmour
 
-type Handler interface {
-	Process(*GilmourRequest, *GilmourResponse)
-}
+type Handler func(*GilmourRequest, *GilmourResponse)
