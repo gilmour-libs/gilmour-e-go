@@ -4,31 +4,31 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
 )
 
-type GilmourRequest struct {
+type Request struct {
 	topic string
 	gData *protocol.RecvRequest
 }
 
-func (self *GilmourRequest) Sender() string {
+func (self *Request) Sender() string {
 	return self.gData.GetSender()
 }
 
-func (self *GilmourRequest) Data(t interface{}) {
+func (self *Request) Data(t interface{}) {
 	self.gData.GetData(t)
 }
 
-func (self *GilmourRequest) Topic() string {
+func (self *Request) Topic() string {
 	return self.topic
 }
 
-func (self *GilmourRequest) Code() int {
+func (self *Request) Code() int {
 	return self.gData.GetCode()
 }
 
-func (self *GilmourRequest) StringData() []byte {
+func (self *Request) StringData() []byte {
 	return self.gData.RawData()
 }
 
-func NewGilmourRequest(t string, gd *protocol.RecvRequest) *GilmourRequest {
-	return &GilmourRequest{t, gd}
+func NewRequest(t string, gd *protocol.RecvRequest) *Request {
+	return &Request{t, gd}
 }

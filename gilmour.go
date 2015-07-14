@@ -220,8 +220,8 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 }
 
 func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.RecvRequest) {
-	req := NewGilmourRequest(topic, d)
-	res := NewGilmourResponse(self.backend.ResponseTopic(d.GetSender()))
+	req := NewRequest(topic, d)
+	res := NewResponse(self.backend.ResponseTopic(d.GetSender()))
 	//GilmourResponder res = new GilmourResponder(backend.responseTopic(d.getSender()));
 
 	//Executing Request

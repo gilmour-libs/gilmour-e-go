@@ -1,3 +1,3 @@
 package gilmour
 
-type Handler func(*GilmourRequest, *GilmourResponse)
+type Handler func(*Request, *Response)

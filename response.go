@@ -4,27 +4,27 @@ import (
 	"errors"
 )
 
-type GilmourResponse struct {
+type Response struct {
 	senderchannel string
 	message       interface{}
 	code          int
 	responseSent  bool
 }
 
-func (self *GilmourResponse) isResponseSent() bool {
+func (self *Response) isResponseSent() bool {
 	return self.responseSent
 }
 
-func (self *GilmourResponse) Respond(t interface{}) {
+func (self *Response) Respond(t interface{}) {
 	self.message = t
 }
 
-func (self *GilmourResponse) RespondWithCode(t interface{}, code int) {
+func (self *Response) RespondWithCode(t interface{}, code int) {
 	self.message = t
 	self.code = code
 }
 
-func (self *GilmourResponse) Send() (err error) {
+func (self *Response) Send() (err error) {
 	if self.responseSent {
 		err = errors.New("Response already sent.")
 		return
@@ -34,8 +34,8 @@ func (self *GilmourResponse) Send() (err error) {
 	return
 }
 
-func NewGilmourResponse(channel string) *GilmourResponse {
-	x := GilmourResponse{}
+func NewResponse(channel string) *Response {
+	x := Response{}
 	x.senderchannel = channel
 	return &x
 }
