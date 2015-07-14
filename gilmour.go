@@ -7,9 +7,10 @@ import (
 	"sync"
 )
 
-func Get() *Gilmour {
+func Get(backend GilmourBackend) *Gilmour {
 	x := Gilmour{}
 	x.subscribers = map[string][]*Subscription{}
+	x.addBackend(backend)
 	return &x
 }
 
@@ -23,7 +24,7 @@ type Gilmour struct {
 	subscribers       map[string][]*Subscription
 }
 
-func (self *Gilmour) AddBackend(backend GilmourBackend) {
+func (self *Gilmour) addBackend(backend GilmourBackend) {
 	self.backend = backend
 }
 
@@ -38,7 +39,7 @@ func (self *Gilmour) GetIdent() string {
 	return self.ident
 }
 
-func (self *Gilmour) RegisterIdent() {
+func (self *Gilmour) registerIdent() {
 	ident := self.GetIdent()
 	err := self.backend.RegisterIdent(ident)
 	if err != nil {
@@ -46,7 +47,11 @@ func (self *Gilmour) RegisterIdent() {
 	}
 }
 
-func (self *Gilmour) UnregisterIdent() {
+func (self *Gilmour) unregisterIdent() {
+	if !self.IsHealthCheckEnabled() {
+		return
+	}
+
 	ident := self.GetIdent()
 	err := self.backend.UnregisterIdent(ident)
 	if err != nil {
@@ -60,6 +65,15 @@ func (self *Gilmour) IsHealthCheckEnabled() bool {
 
 func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
 	self.enableHealthCheck = true
+
+	ident := self.GetIdent()
+	topic := self.backend.HealthTopic(ident)
+	self.Subscribe(topic, func(r *Request, w *Response) {
+		fmt.Println("Received data on Health topic")
+	}, (&HandlerOpts{}).SetGroup("exclusive"))
+
+	self.registerIdent()
+
 	return self
 }
 
@@ -253,18 +267,12 @@ func (self *Gilmour) addConsumer(sink <-chan *protocol.Message) {
 }
 
 func (self *Gilmour) Start() {
-	if self.IsHealthCheckEnabled() {
-		self.RegisterIdent()
-	}
-
 	sink := self.backend.Start()
 	go self.addConsumer(sink)
+	bindSignals(self)
 }
 
 func (self *Gilmour) Stop() {
-	if self.IsHealthCheckEnabled() {
-		self.UnregisterIdent()
-	}
-
+	self.unregisterIdent()
 	self.backend.Stop()
 }

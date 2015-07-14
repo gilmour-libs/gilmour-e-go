@@ -98,6 +98,10 @@ func (self *Redis) Subscribe(topic string) (err error) {
 	return
 }
 
+func (self *Redis) HealthTopic(ident string) string {
+	return defaultHealthTopic + "." + ident
+}
+
 func (self *Redis) ResponseTopic(sender string) string {
 	return defaultResponseTopic + "." + sender
 }

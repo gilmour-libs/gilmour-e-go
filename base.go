@@ -8,7 +8,9 @@ type GilmourBackend interface {
 	Start() chan *protocol.Message
 	Stop()
 
+	HealthTopic(ident string) string
 	ResponseTopic(sender string) string
+
 	Subscribe(topic string) error
 	Unsubscribe(topic string) error
 	Publish(topic string, msg interface{}) error
