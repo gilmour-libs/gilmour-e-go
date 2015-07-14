@@ -18,6 +18,11 @@ const defaultErrorBuffer = 9999
 func MakeRedis(host string) *Redis {
 	engine := Redis{}
 	engine.conn = GetConn(host)
+	_, err := engine.conn.Do("PING")
+	if err != nil {
+		panic(err)
+	}
+
 	engine.pubsub = redis.PubSubConn{Conn: engine.conn}
 	return &engine
 }
