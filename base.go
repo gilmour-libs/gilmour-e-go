@@ -9,13 +9,12 @@ type GilmourBackend interface {
 	Stop()
 
 	ResponseTopic(sender string) string
-	Subscribe(topic string, opts *HandlerOpts) error
+	Subscribe(topic string) error
 	Unsubscribe(topic string) error
 	Publish(topic string, msg interface{}) error
 	ReportError(method string, err *protocol.Error) error
 
 	AcquireGroupLock(group, sender string) bool
-	HealthTopic(ident string) string
 
 	RegisterIdent(uuid string) error
 	UnregisterIdent(uuid string) error

@@ -15,6 +15,13 @@ const defaultResponseTopic = "gilmour.response"
 const defaultIdentKey = "gilmour.known_host.health"
 const defaultErrorBuffer = 9999
 
+func MakeRedis(host string) *Redis {
+	engine := Redis{}
+	engine.conn = GetConn(host)
+	engine.pubsub = redis.PubSubConn{Conn: engine.conn}
+	return &engine
+}
+
 type Redis struct {
 	conn   redis.Conn
 	pubsub redis.PubSubConn
@@ -113,16 +120,21 @@ func (self *Redis) Publish(topic string, message interface{}) (err error) {
 	return
 }
 
-func (self *Redis) RegisterIdent(uuid string) {
-	self.conn.Do("HSET", defaultIdentKey, uuid, "true")
+func (self *Redis) RegisterIdent(uuid string) error {
+	_, err := self.conn.Do("HSET", defaultIdentKey, uuid, "true")
+	return err
 }
 
-func (self *Redis) UnregisterIdent(uuid string) {
-	self.conn.Do("HDEL", defaultIdentKey, uuid)
+func (self *Redis) UnregisterIdent(uuid string) error {
+	_, err := self.conn.Do("HDEL", defaultIdentKey, uuid)
+	return err
 }
 
 func (self *Redis) Start() chan *protocol.Message {
 	return self.setupListeners()
+}
+
+func (self *Redis) Stop() {
 }
 
 func (self *Redis) setupListeners() chan *protocol.Message {

@@ -17,6 +17,10 @@ type Gilmour struct {
 	subscribers       map[string][]*Subscription
 }
 
+func (self *Gilmour) AddBackend(backend GilmourBackend) {
+	self.backend = backend
+}
+
 func (self *Gilmour) GetIdent() string {
 	self.identMutex.Lock()
 	defer self.identMutex.Unlock()
@@ -30,12 +34,18 @@ func (self *Gilmour) GetIdent() string {
 
 func (self *Gilmour) RegisterIdent() {
 	ident := self.GetIdent()
-	self.backend.RegisterIdent(ident)
+	err := self.backend.RegisterIdent(ident)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (self *Gilmour) UnregisterIdent() {
 	ident := self.GetIdent()
-	self.backend.UnregisterIdent(ident)
+	err := self.backend.UnregisterIdent(ident)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (self *Gilmour) IsHealthCheckEnabled() bool {
@@ -101,7 +111,7 @@ func (self *Gilmour) addSubscriber(topic string, h *Handler, opts *HandlerOpts) 
 
 func (self *Gilmour) Subscribe(topic string, h *Handler, opts *HandlerOpts) *Subscription {
 	if _, ok := self.subscribers[topic]; !ok {
-		self.backend.Subscribe(topic, opts)
+		self.backend.Subscribe(topic)
 	}
 
 	return self.addSubscriber(topic, h, opts)
