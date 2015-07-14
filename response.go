@@ -11,20 +11,20 @@ type GilmourResponse struct {
 	responseSent  bool
 }
 
-func (self *GilmourResponse) isResponseSent() bool {
+func (self Response) isResponseSent() bool {
 	return self.responseSent
 }
 
-func (self *GilmourResponse) Respond(t interface{}) {
+func (self Response) Respond(t interface{}) {
 	self.message = t
 }
 
-func (self *GilmourResponse) RespondWithCode(t interface{}, code int) {
+func (self Response) RespondWithCode(t interface{}, code int) {
 	self.message = t
 	self.code = code
 }
 
-func (self *GilmourResponse) Send() (err error) {
+func (self Response) Send() (err error) {
 	if self.responseSent {
 		err = errors.New("Response already sent.")
 		return
@@ -34,7 +34,7 @@ func (self *GilmourResponse) Send() (err error) {
 	return
 }
 
-func NewGilmourResponse(channel string) *GilmourResponse {
+func NewGilmourResponse(channel string) Response {
 	x := GilmourResponse{}
 	x.senderchannel = channel
 	return &x
