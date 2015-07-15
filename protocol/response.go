@@ -4,30 +4,26 @@ import (
 	"encoding/json"
 )
 
-type jsonData struct {
+type RecvRequest struct {
 	Data   json.RawMessage `json:"data"`
 	Code   int             `json:"code"`
 	Sender string          `json:"sender"`
 }
 
-type RecvRequest struct {
-	jsonData jsonData
-}
-
 func (self *RecvRequest) GetData(t interface{}) error {
-	return json.Unmarshal(self.jsonData.Data, t)
+	return json.Unmarshal(self.Data, t)
 }
 
 func (self *RecvRequest) RawData() []byte {
-	return self.jsonData.Data
+	return self.Data
 }
 
 func (self *RecvRequest) GetCode() int {
-	return self.jsonData.Code
+	return self.Code
 }
 
 func (self *RecvRequest) GetSender() string {
-	return self.jsonData.Sender
+	return self.Sender
 }
 
 func ParseResponse(data interface{}) (resp *RecvRequest, err error) {
@@ -42,6 +38,6 @@ func ParseResponse(data interface{}) (resp *RecvRequest, err error) {
 		msg = t
 	}
 
-	err = json.Unmarshal(msg, &resp.jsonData)
+	err = json.Unmarshal(msg, &resp)
 	return
 }

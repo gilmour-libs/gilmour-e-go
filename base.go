@@ -21,9 +21,3 @@ type Backend interface {
 	RegisterIdent(uuid string) error
 	UnregisterIdent(uuid string) error
 }
-
-type PublishOpts struct {
-	Data    interface{}
-	Code    int
-	Handler Handler
-}

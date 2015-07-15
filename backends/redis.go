@@ -2,9 +2,9 @@ package backends
 
 import (
 	"errors"
-	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
+	"log"
 	"strings"
 )
 
@@ -186,11 +186,11 @@ func (self *Redis) setupListeners() chan *protocol.Message {
 				msg := &protocol.Message{"message", v.Channel, v.Data, v.Channel}
 				sink <- msg
 			case redis.Subscription:
-				fmt.Printf("%s: %s %d\n", v.Channel, v.Kind, v.Count)
+				log.Printf("%s: %s %d\n", v.Channel, v.Kind, v.Count)
 			case redis.Pong:
-				fmt.Printf("%s: %s %d\n", "Pong", nil, v.Data)
+				log.Printf("%s: %s %d\n", "Pong", nil, v.Data)
 			case error:
-				fmt.Printf(v.Error())
+				log.Printf(v.Error())
 			}
 		}
 	}()

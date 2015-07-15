@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
+	//"log"
 	"strings"
 	"sync"
 )
@@ -200,27 +201,25 @@ func (self *Gilmour) ReportError(message *protocol.Error) {
 	}
 }
 
-func (self *Gilmour) Publish(topic string, opts *PublishOpts) string {
+func (self *Gilmour) Publish(topic string, opts *Publisher) string {
 	//Publish the message
 
 	sender := protocol.MakeSenderId()
 	//Always generate a senderId for the message being sent out
 
-	if opts.Handler != nil {
+	if opts.GetHandler() != nil {
 		//If a handler is being supplied, subscribe to a response
 		respChannel := self.backend.ResponseTopic(sender)
 		//Wait for a responseHandler
 		handlerOpts := MakeHandlerOpts().SetOneShot().SetSendResponse(false)
-		self.Subscribe(respChannel, opts.Handler, handlerOpts)
+		self.Subscribe(respChannel, opts.GetHandler(), handlerOpts)
 	}
 
-	if opts.Code == 0 {
-		opts.Code = 200
+	if opts.GetCode() == 0 {
+		opts.SetCode(200)
 	}
 
-	message := (&protocol.SentRequest{}).SetSender(sender).SetCode(opts.Code).Send(opts.Data)
-
-	err := self.backend.Publish(topic, message)
+	err := self.backend.Publish(topic, opts.ToSentRequest(sender))
 	if err != nil {
 		panic(err)
 	}
@@ -273,8 +272,8 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 			panic(err)
 		}
 
-		opts := PublishOpts{res.message, res.code, nil}
-		self.Publish(res.senderchannel, &opts)
+		opts := NewPublisher().SetData(res.message).SetCode(res.code)
+		self.Publish(res.senderchannel, opts)
 	}
 }
 
