@@ -13,6 +13,10 @@ func (self *Request) Sender() string {
 	return self.gData.GetSender()
 }
 
+func (self *Request) RawData() interface{} {
+	return self.gData.RawData()
+}
+
 func (self *Request) Data(t interface{}) {
 	self.gData.GetData(t)
 }
