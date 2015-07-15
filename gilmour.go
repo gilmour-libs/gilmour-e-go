@@ -4,10 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
+	"strings"
 	"sync"
 )
 
-func Get(backend GilmourBackend) *Gilmour {
+func Get(backend Backend) *Gilmour {
 	x := Gilmour{}
 	x.subscribers = map[string][]*Subscription{}
 	x.addBackend(backend)
@@ -18,13 +19,13 @@ type Gilmour struct {
 	enableHealthCheck bool
 	identMutex        sync.RWMutex
 	subscriberMutex   sync.RWMutex
-	backend           GilmourBackend
+	backend           Backend
 	ident             string
 	errorMethod       string
 	subscribers       map[string][]*Subscription
 }
 
-func (self *Gilmour) addBackend(backend GilmourBackend) {
+func (self *Gilmour) addBackend(backend Backend) {
 	self.backend = backend
 }
 
@@ -67,9 +68,24 @@ func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
 	self.enableHealthCheck = true
 
 	ident := self.GetIdent()
-	topic := self.backend.HealthTopic(ident)
-	self.Subscribe(topic, func(r *Request, w *Response) {
-		fmt.Println("Received data on Health topic")
+	health_topic := self.backend.HealthTopic(ident)
+
+	self.Subscribe(health_topic, func(r *Request, w *Response) {
+		topics := []string{}
+
+		resp_topic := self.backend.ResponseTopic(protocol.BLANK)
+
+		for t, _ := range self.subscribers {
+			if strings.HasPrefix(t, resp_topic) ||
+				strings.HasPrefix(t, health_topic) {
+				//Do Nothing, these are internal topics
+			} else {
+				topics = append(topics, t)
+			}
+		}
+
+		w.Respond(topics)
+		fmt.Println("Health topics", topics)
 	}, (&HandlerOpts{}).SetGroup("exclusive"))
 
 	self.registerIdent()
@@ -204,6 +220,7 @@ func (self *Gilmour) Publish(topic string, opts *PublishOpts) string {
 
 	message := (&protocol.SentRequest{}).SetSender(sender).SetCode(opts.Code).Send(opts.Data)
 
+	fmt.Println("Publishing:", topic, message)
 	err := self.backend.Publish(topic, message)
 	if err != nil {
 		panic(err)
@@ -246,7 +263,6 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.RecvRequest) {
 	req := NewRequest(topic, d)
 	res := NewResponse(self.backend.ResponseTopic(d.GetSender()))
-	//GilmourResponder res = new GilmourResponder(backend.responseTopic(d.getSender()));
 
 	//Executing Request
 	s.GetHandler()(req, res)

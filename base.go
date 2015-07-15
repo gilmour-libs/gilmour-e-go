@@ -4,7 +4,7 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
 )
 
-type GilmourBackend interface {
+type Backend interface {
 	Start() chan *protocol.Message
 	Stop()
 

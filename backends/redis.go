@@ -19,7 +19,7 @@ func MakeRedis(host string) *Redis {
 	engine := Redis{}
 	engine.pool = GetPool(host)
 
-	conn := engine.pool.Get()
+	conn := engine.GetConn()
 	defer conn.Close()
 	_, err := conn.Do("PING")
 	if err != nil {
@@ -39,8 +39,12 @@ func (self *Redis) getErrorTopic() string {
 	return defaultErrorTopic
 }
 
+func (self *Redis) GetConn() redis.Conn {
+	return self.pool.Get()
+}
+
 func (self *Redis) AcquireGroupLock(group, sender string) bool {
-	conn := self.pool.Get()
+	conn := self.GetConn()
 	defer conn.Close()
 
 	key := sender + group
@@ -62,7 +66,7 @@ func (self *Redis) getErrorQueue() string {
 }
 
 func (self *Redis) ReportError(method string, message *protocol.Error) (err error) {
-	conn := self.pool.Get()
+	conn := self.GetConn()
 	defer conn.Close()
 
 	switch method {
@@ -107,6 +111,10 @@ func (self *Redis) Subscribe(topic string) (err error) {
 	return
 }
 
+func (self *Redis) GetHealthIdent() string {
+	return defaultIdentKey
+}
+
 func (self *Redis) HealthTopic(ident string) string {
 	return defaultHealthTopic + "." + ident
 }
@@ -132,28 +140,29 @@ func (self *Redis) Publish(topic string, message interface{}) (err error) {
 	}
 
 	if err != nil {
-		conn := self.pool.Get()
-		defer conn.Close()
-
-		_, err = conn.Do("PUBLISH", topic, msg)
+		return
 	}
 
+	conn := self.GetConn()
+	defer conn.Close()
+
+	_, err = conn.Do("PUBLISH", topic, msg)
 	return
 }
 
 func (self *Redis) RegisterIdent(uuid string) error {
-	conn := self.pool.Get()
+	conn := self.GetConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HSET", defaultIdentKey, uuid, "true")
+	_, err := conn.Do("HSET", self.GetHealthIdent(), uuid, "true")
 	return err
 }
 
 func (self *Redis) UnregisterIdent(uuid string) error {
-	conn := self.pool.Get()
+	conn := self.GetConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HDEL", defaultIdentKey, uuid)
+	_, err := conn.Do("HDEL", self.GetHealthIdent(), uuid)
 	return err
 }
 
