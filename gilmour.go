@@ -85,7 +85,6 @@ func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
 		}
 
 		w.Respond(topics)
-		fmt.Println("Health topics", topics)
 	}, (&HandlerOpts{}).SetGroup("exclusive"))
 
 	self.registerIdent()
@@ -141,6 +140,7 @@ func (self *Gilmour) addSubscriber(topic string, h Handler, opts *HandlerOpts) *
 
 	arr := self.subscribers[topic]
 	arr = append(arr, sub)
+	self.subscribers[topic] = arr
 
 	return sub
 }
@@ -220,7 +220,6 @@ func (self *Gilmour) Publish(topic string, opts *PublishOpts) string {
 
 	message := (&protocol.SentRequest{}).SetSender(sender).SetCode(opts.Code).Send(opts.Data)
 
-	fmt.Println("Publishing:", topic, message)
 	err := self.backend.Publish(topic, message)
 	if err != nil {
 		panic(err)
