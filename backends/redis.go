@@ -91,7 +91,7 @@ func (self *Redis) Unsubscribe(topic string) (err error) {
 	if strings.HasSuffix(topic, "*") {
 		err = self.pubsub.PUnsubscribe(topic)
 	} else {
-		err = self.pubsub.PSubscribe(topic)
+		err = self.pubsub.Unsubscribe(topic)
 	}
 
 	return
