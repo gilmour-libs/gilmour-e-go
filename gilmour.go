@@ -137,7 +137,7 @@ func (self *Gilmour) Subscribe(topic string, h Handler, opts *HandlerOpts) *Subs
 	return self.addSubscriber(topic, h, opts)
 }
 
-func (self *Gilmour) UnSubscribe(topic string, s *Subscription) {
+func (self *Gilmour) Unsubscribe(topic string, s *Subscription) {
 	var err error
 
 	if err == nil {
@@ -150,8 +150,12 @@ func (self *Gilmour) UnSubscribe(topic string, s *Subscription) {
 
 }
 
-func (self *Gilmour) UnSubscribeAll(topic string) {
+func (self *Gilmour) UnsubscribeAll(topic string) {
 	self.removeSubscribers(topic)
+	err := self.backend.Unsubscribe(topic)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (self *Gilmour) CanReportErrors() bool {
@@ -273,6 +277,10 @@ func (self *Gilmour) Start() {
 }
 
 func (self *Gilmour) Stop() {
-	self.unregisterIdent()
-	self.backend.Stop()
+	defer self.unregisterIdent()
+	defer self.backend.Stop()
+
+	for topic, _ := range self.subscribers {
+		self.UnsubscribeAll(topic)
+	}
 }
