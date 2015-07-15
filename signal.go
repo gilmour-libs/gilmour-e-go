@@ -16,6 +16,7 @@ func bindSignals(engine *Gilmour) {
 		syscall.SIGQUIT)
 	go func() {
 		<-sigc
+		engine.Stop()
 		log.Println("Shutting down engines.")
 		os.Exit(0)
 	}()

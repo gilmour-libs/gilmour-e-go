@@ -29,7 +29,7 @@ var cached = struct {
 	pool *redis.Pool
 }{}
 
-func GetConn(redis_host string) redis.Conn {
+func GetPool(redis_host string) *redis.Pool {
 
 	cached.Lock()
 	if cached.pool == nil {
@@ -37,6 +37,5 @@ func GetConn(redis_host string) redis.Conn {
 	}
 	cached.Unlock()
 
-	conn := cached.pool.Get()
-	return conn
+	return cached.pool
 }

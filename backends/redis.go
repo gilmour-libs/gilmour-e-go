@@ -17,18 +17,21 @@ const defaultErrorBuffer = 9999
 
 func MakeRedis(host string) *Redis {
 	engine := Redis{}
-	engine.conn = GetConn(host)
-	_, err := engine.conn.Do("PING")
+	engine.pool = GetPool(host)
+
+	conn := engine.pool.Get()
+	defer conn.Close()
+	_, err := conn.Do("PING")
 	if err != nil {
 		panic(err)
 	}
 
-	engine.pubsub = redis.PubSubConn{Conn: engine.conn}
+	engine.pubsub = redis.PubSubConn{Conn: engine.pool.Get()}
 	return &engine
 }
 
 type Redis struct {
-	conn   redis.Conn
+	pool   *redis.Pool
 	pubsub redis.PubSubConn
 }
 
@@ -37,9 +40,12 @@ func (self *Redis) getErrorTopic() string {
 }
 
 func (self *Redis) AcquireGroupLock(group, sender string) bool {
+	conn := self.pool.Get()
+	defer conn.Close()
+
 	key := sender + group
 
-	val, err := self.conn.Do("SET", key, key, "NX", "EX", "600")
+	val, err := conn.Do("SET", key, key, "NX", "EX", "600")
 	if err != nil {
 		return false
 	}
@@ -56,6 +62,9 @@ func (self *Redis) getErrorQueue() string {
 }
 
 func (self *Redis) ReportError(method string, message *protocol.Error) (err error) {
+	conn := self.pool.Get()
+	defer conn.Close()
+
 	switch method {
 	case protocol.PUBLISH:
 		err = self.Publish(self.getErrorTopic(), message)
@@ -68,10 +77,10 @@ func (self *Redis) ReportError(method string, message *protocol.Error) (err erro
 		}
 
 		queue := self.getErrorQueue()
-		self.conn.Send("LPUSH", queue, string(msg))
-		self.conn.Send("LTRIM", queue, 0, defaultErrorBuffer)
+		conn.Send("LPUSH", queue, string(msg))
+		conn.Send("LTRIM", queue, 0, defaultErrorBuffer)
 
-		_, err = self.conn.Receive()
+		_, err = conn.Receive()
 
 	}
 
@@ -123,19 +132,28 @@ func (self *Redis) Publish(topic string, message interface{}) (err error) {
 	}
 
 	if err != nil {
-		_, err = self.conn.Do("PUBLISH", topic, msg)
+		conn := self.pool.Get()
+		defer conn.Close()
+
+		_, err = conn.Do("PUBLISH", topic, msg)
 	}
 
 	return
 }
 
 func (self *Redis) RegisterIdent(uuid string) error {
-	_, err := self.conn.Do("HSET", defaultIdentKey, uuid, "true")
+	conn := self.pool.Get()
+	defer conn.Close()
+
+	_, err := conn.Do("HSET", defaultIdentKey, uuid, "true")
 	return err
 }
 
 func (self *Redis) UnregisterIdent(uuid string) error {
-	_, err := self.conn.Do("HDEL", defaultIdentKey, uuid)
+	conn := self.pool.Get()
+	defer conn.Close()
+
+	_, err := conn.Do("HDEL", defaultIdentKey, uuid)
 	return err
 }
 
