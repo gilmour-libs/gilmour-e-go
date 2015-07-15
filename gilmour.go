@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
-	"strings"
 	"sync"
 )
 
@@ -66,29 +65,8 @@ func (self *Gilmour) IsHealthCheckEnabled() bool {
 
 func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
 	self.enableHealthCheck = true
-
-	ident := self.GetIdent()
-	health_topic := self.backend.HealthTopic(ident)
-
-	self.Subscribe(health_topic, func(r *Request, w *Response) {
-		topics := []string{}
-
-		resp_topic := self.backend.ResponseTopic(protocol.BLANK)
-
-		for t, _ := range self.subscribers {
-			if strings.HasPrefix(t, resp_topic) ||
-				strings.HasPrefix(t, health_topic) {
-				//Do Nothing, these are internal topics
-			} else {
-				topics = append(topics, t)
-			}
-		}
-
-		w.Respond(topics)
-	}, MakeHandlerOpts().SetGroup("exclusive"))
-
+	subscribeHealth(self)
 	self.registerIdent()
-
 	return self
 }
 
@@ -251,6 +229,7 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 	opts := s.GetOpts()
 	if opts.GetGroup() != protocol.BLANK &&
 		!self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
+		fmt.Println("Cannot acquire Lock to process request.")
 		return
 	}
 
