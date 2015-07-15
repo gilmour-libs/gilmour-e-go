@@ -78,7 +78,7 @@ func (self *Gilmour) removeSubscribers(topic string) (err error) {
 	return
 }
 
-func (self *Gilmour) removeSubscriber(topic string, s *Subscription) (length int, err error) {
+func (self *Gilmour) removeSubscriber(topic string, s *Subscription) (err error) {
 	self.subscriberMutex.Lock()
 	defer self.subscriberMutex.Unlock()
 
@@ -88,21 +88,22 @@ func (self *Gilmour) removeSubscriber(topic string, s *Subscription) (length int
 		return
 	}
 
-	new_list := make([]*Subscription, len(self.subscribers)-1)
+	new_list := []*Subscription{}
 
-	i := 0
 	for _, elem := range list {
 		if elem == s {
 			//Do nothing
 			continue
 		}
 
-		new_list[i] = elem
-		i++
+		new_list = append(new_list, elem)
 	}
 
 	self.subscribers[topic] = new_list
-	length = len(new_list)
+	if len(new_list) == 0 {
+		delete(self.subscribers, topic)
+	}
+
 	return
 }
 
@@ -132,16 +133,17 @@ func (self *Gilmour) Subscribe(topic string, h Handler, opts *HandlerOpts) *Subs
 }
 
 func (self *Gilmour) Unsubscribe(topic string, s *Subscription) {
-	var err error
-
-	if err == nil {
-		err = self.backend.Unsubscribe(topic)
-	}
-
+	err := self.removeSubscriber(topic, s)
 	if err != nil {
 		panic(err)
 	}
 
+	if _, ok := self.subscribers[topic]; !ok {
+		err := self.backend.Unsubscribe(topic)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func (self *Gilmour) UnsubscribeAll(topic string) {
@@ -212,8 +214,9 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 	}
 
 	for _, s := range subs {
-		if s.GetOpts().IsOneShot() {
-			self.removeSubscriber(msg.Key, s)
+		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
+			fmt.Println("Message to", msg.Key, msg.Topic, "is one shot")
+			self.Unsubscribe(msg.Key, s)
 		}
 
 		self.executeSubscriber(s, msg.Topic, msg.Data)
@@ -233,7 +236,7 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 		return
 	}
 
-	self.handleRequest(s, topic, d)
+	go self.handleRequest(s, topic, d)
 }
 
 func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.RecvRequest) {
