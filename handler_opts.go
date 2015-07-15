@@ -34,5 +34,7 @@ func (self *HandlerOpts) SetOneShot() *HandlerOpts {
 }
 
 func MakeHandlerOpts() *HandlerOpts {
-	return &HandlerOpts{}
+	opts := HandlerOpts{}
+	opts.sendResponse = true
+	return &opts
 }

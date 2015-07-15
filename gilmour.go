@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
-	//"log"
 	"strings"
 	"sync"
 )
@@ -86,7 +85,7 @@ func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
 		}
 
 		w.Respond(topics)
-	}, (&HandlerOpts{}).SetGroup("exclusive"))
+	}, MakeHandlerOpts().SetGroup("exclusive"))
 
 	self.registerIdent()
 
@@ -264,10 +263,9 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 
 	//Executing Request
 	s.GetHandler()(req, res)
-	if s.GetOpts().ShouldSendResponse() {
-		var err error
 
-		err = res.Send()
+	if s.GetOpts().ShouldSendResponse() {
+		err := res.Send()
 		if err != nil {
 			panic(err)
 		}
