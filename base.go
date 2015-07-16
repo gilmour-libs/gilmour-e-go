@@ -5,7 +5,7 @@ import (
 )
 
 type Backend interface {
-	Start() chan *protocol.Message
+	Start(chan *protocol.Message)
 	Stop()
 
 	HasActiveSubscribers(topic string) (bool, error)

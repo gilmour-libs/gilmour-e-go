@@ -179,16 +179,14 @@ func (self *Redis) UnregisterIdent(uuid string) error {
 	return err
 }
 
-func (self *Redis) Start() chan *protocol.Message {
-	return self.setupListeners()
+func (self *Redis) Start(sink chan *protocol.Message) {
+	self.setupListeners(sink)
 }
 
 func (self *Redis) Stop() {
 }
 
-func (self *Redis) setupListeners() chan *protocol.Message {
-	sink := make(chan *protocol.Message) //Add a buffer of 50 messages?
-
+func (self *Redis) setupListeners(sink chan *protocol.Message) {
 	go func() {
 		for {
 			switch v := self.pubsub.Receive().(type) {
@@ -207,6 +205,4 @@ func (self *Redis) setupListeners() chan *protocol.Message {
 			}
 		}
 	}()
-
-	return sink
 }

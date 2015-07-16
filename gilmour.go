@@ -308,9 +308,9 @@ func (self *Gilmour) addConsumer(sink <-chan *protocol.Message) {
 }
 
 func (self *Gilmour) Start() {
-	sink := self.backend.Start()
+	sink := make(chan *protocol.Message)
+	self.backend.Start(sink)
 	go self.addConsumer(sink)
-	bindSignals(self)
 }
 
 func (self *Gilmour) Stop() {
