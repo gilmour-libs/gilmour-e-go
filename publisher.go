@@ -22,9 +22,6 @@ func (self *Publisher) ConfirmSubscriber() *Publisher {
 }
 
 func (self *Publisher) GetTimeout() int {
-	if self.timeout == 0 {
-		self.timeout = TIMEOUT
-	}
 	return self.timeout
 }
 

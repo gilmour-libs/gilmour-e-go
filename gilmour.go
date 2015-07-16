@@ -25,6 +25,14 @@ type Gilmour struct {
 	subscribers       map[string][]*Subscription
 }
 
+func (self *Gilmour) sendTimeout(channel string) {
+	opts := NewPublisher().SetCode(499).SetData("Execution timed out")
+	_, err := self.Publish(channel, opts)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func (self *Gilmour) addBackend(backend Backend) {
 	self.backend = backend
 }
@@ -200,6 +208,15 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 
 		//If a handler is being supplied, subscribe to a response
 		respChannel := self.backend.ResponseTopic(sender)
+
+		timeout := opts.GetTimeout()
+		if timeout > 0 {
+			time.AfterFunc(time.Duration(timeout)*time.Second, func() {
+				fmt.Println("Timing out after", timeout)
+				self.sendTimeout(respChannel)
+			})
+		}
+
 		//Wait for a responseHandler
 		handlerOpts := MakeHandlerOpts().SetOneShot().SetSendResponse(false)
 		self.Subscribe(respChannel, opts.GetHandler(), handlerOpts)
@@ -270,16 +287,16 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 			panic(err)
 		}
 
-		opts := NewPublisher().SetData(res.message).SetCode(res.code)
-
 		if status == false {
-			opts.SetCode(499).SetData("Execution timed out")
+			self.sendTimeout(res.senderchannel)
+		} else {
+			opts := NewPublisher().SetData(res.message).SetCode(res.code)
+			_, err2 := self.Publish(res.senderchannel, opts)
+			if err2 != nil {
+				panic(err2)
+			}
 		}
 
-		_, err2 := self.Publish(res.senderchannel, opts)
-		if err2 != nil {
-			panic(err)
-		}
 	}
 }
 
