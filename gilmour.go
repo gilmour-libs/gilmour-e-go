@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
 	"sync"
+	"time"
 )
 
 func Get(backend Backend) *Gilmour {
@@ -243,8 +244,19 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 	req := NewRequest(topic, d)
 	res := NewResponse(self.backend.ResponseTopic(d.GetSender()))
 
+	done := make(chan bool, 1)
+
 	//Executing Request
-	s.GetHandler()(req, res)
+	go func(done chan<- bool) {
+		s.GetHandler()(req, res)
+		done <- true
+	}(done)
+
+	time.AfterFunc(time.Duration(s.GetOpts().GetTimeout())*time.Second, func() {
+		done <- false
+	})
+
+	status := <-done
 
 	if s.GetOpts().ShouldSendResponse() {
 		err := res.Send()
@@ -253,6 +265,11 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 		}
 
 		opts := NewPublisher().SetData(res.message).SetCode(res.code)
+
+		if status == false {
+			opts.SetCode(499).SetData("Execution timed out")
+		}
+
 		self.Publish(res.senderchannel, opts)
 	}
 }
