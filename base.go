@@ -8,6 +8,7 @@ type Backend interface {
 	Start() chan *protocol.Message
 	Stop()
 
+	HasActiveSubscribers(topic string) (bool, error)
 	HealthTopic(ident string) string
 	ResponseTopic(sender string) string
 

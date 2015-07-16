@@ -181,13 +181,23 @@ func (self *Gilmour) ReportError(message *protocol.Error) {
 	}
 }
 
-func (self *Gilmour) Publish(topic string, opts *Publisher) string {
+func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err error) {
 	//Publish the message
 
-	sender := protocol.MakeSenderId()
+	sender = protocol.MakeSenderId()
 	//Always generate a senderId for the message being sent out
 
 	if opts.GetHandler() != nil {
+		if opts.ShouldConfirmSubscriber() {
+			has, err2 := self.backend.HasActiveSubscribers(topic)
+			if err2 != nil {
+				return
+			} else if !has {
+				err = errors.New("No active subscribers available for: " + topic)
+				return
+			}
+		}
+
 		//If a handler is being supplied, subscribe to a response
 		respChannel := self.backend.ResponseTopic(sender)
 		//Wait for a responseHandler
@@ -199,12 +209,8 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) string {
 		opts.SetCode(200)
 	}
 
-	err := self.backend.Publish(topic, opts.ToSentRequest(sender))
-	if err != nil {
-		panic(err)
-	}
-
-	return sender
+	err = self.backend.Publish(topic, opts.ToSentRequest(sender))
+	return
 }
 
 func (self *Gilmour) processMessage(msg *protocol.Message) {
@@ -270,7 +276,10 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 			opts.SetCode(499).SetData("Execution timed out")
 		}
 
-		self.Publish(res.senderchannel, opts)
+		_, err2 := self.Publish(res.senderchannel, opts)
+		if err2 != nil {
+			panic(err)
+		}
 	}
 }
 

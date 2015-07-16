@@ -43,6 +43,19 @@ func (self *Redis) GetConn() redis.Conn {
 	return self.pool.Get()
 }
 
+func (self *Redis) HasActiveSubscribers(topic string) (bool, error) {
+	conn := self.GetConn()
+	defer conn.Close()
+
+	data, err := redis.IntMap(conn.Do("PUBSUB", "NUMSUB", topic))
+	if err != nil {
+		_, has := data[topic]
+		return has, err
+	} else {
+		return false, err
+	}
+}
+
 func (self *Redis) AcquireGroupLock(group, sender string) bool {
 	conn := self.GetConn()
 	defer conn.Close()

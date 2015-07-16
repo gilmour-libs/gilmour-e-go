@@ -8,6 +8,29 @@ type Publisher struct {
 	data    interface{}
 	code    int
 	handler Handler
+	timeout int
+	confirm bool
+}
+
+func (self *Publisher) ShouldConfirmSubscriber() bool {
+	return self.confirm
+}
+
+func (self *Publisher) ConfirmSubscriber() *Publisher {
+	self.confirm = true
+	return self
+}
+
+func (self *Publisher) GetTimeout() int {
+	if self.timeout == 0 {
+		self.timeout = TIMEOUT
+	}
+	return self.timeout
+}
+
+func (self *Publisher) SetTimeout(t int) *Publisher {
+	self.timeout = t
+	return self
 }
 
 func (self *Publisher) SetCode(code int) *Publisher {
