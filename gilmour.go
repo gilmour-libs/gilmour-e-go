@@ -3,8 +3,8 @@ package gilmour
 import (
 	"errors"
 	"fmt"
-	"gopkg.in/gilmour-libs/gilmour-go.v0/logger"
-	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
 	"sync"
 	"time"
 )

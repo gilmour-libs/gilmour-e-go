@@ -1,7 +1,7 @@
 package gilmour
 
 import (
-	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
 	log15 "gopkg.in/inconshreveable/log15.v2"
 )
 
