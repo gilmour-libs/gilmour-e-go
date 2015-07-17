@@ -28,7 +28,8 @@ type Gilmour struct {
 	subscribers       map[string][]*Subscription
 }
 
-func (self *Gilmour) sendTimeout(channel string) {
+func (self *Gilmour) sendTimeout(channel string, timeout int) {
+	log.Warn("Publisher time out", "Timeout", timeout)
 	opts := NewPublisher().SetCode(499).SetData("Execution timed out")
 	_, err := self.Publish(channel, opts)
 	if err != nil {
@@ -215,8 +216,7 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 		timeout := opts.GetTimeout()
 		if timeout > 0 {
 			time.AfterFunc(time.Duration(timeout)*time.Second, func() {
-				log.Info("Publisher time out", "Timeout", timeout)
-				self.sendTimeout(respChannel)
+				self.sendTimeout(respChannel, timeout)
 			})
 		}
 
@@ -242,7 +242,7 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 
 	for _, s := range subs {
 		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
-			log.Info("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
+			log.Warn("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
 			self.Unsubscribe(msg.Key, s)
 		}
 
@@ -278,7 +278,8 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 		done <- true
 	}(done)
 
-	time.AfterFunc(time.Duration(s.GetOpts().GetTimeout())*time.Second, func() {
+	timeout := s.GetOpts().GetTimeout()
+	time.AfterFunc(time.Duration(timeout)*time.Second, func() {
 		done <- false
 	})
 
@@ -291,7 +292,7 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 		}
 
 		if status == false {
-			self.sendTimeout(res.senderchannel)
+			self.sendTimeout(res.senderchannel, timeout)
 		} else {
 			opts := NewPublisher().SetData(res.message).SetCode(res.code)
 			_, err2 := self.Publish(res.senderchannel, opts)
