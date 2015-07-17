@@ -29,7 +29,6 @@ type Gilmour struct {
 }
 
 func (self *Gilmour) sendTimeout(channel string, timeout int) {
-	log.Warn("Publisher time out", "Timeout", timeout)
 	opts := NewPublisher().SetCode(499).SetData("Execution timed out")
 	_, err := self.Publish(channel, opts)
 	if err != nil {
@@ -186,8 +185,9 @@ func (self *Gilmour) GetErrorMethod() string {
 	return self.errorMethod
 }
 
-func (self *Gilmour) ReportError(message *protocol.Error) {
-	err := self.backend.ReportError(self.GetErrorMethod(), message)
+func (self *Gilmour) ReportError(e *protocol.Error) {
+	log.Warn("Reporting Error", "Code", e.GetCode(), "Sender", e.GetSender(), "Topic", e.GetTopic())
+	err := self.backend.ReportError(self.GetErrorMethod(), e)
 	if err != nil {
 		panic(err)
 	}
@@ -227,6 +227,16 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 
 	if opts.GetCode() == 0 {
 		opts.SetCode(200)
+	}
+
+	if opts.GetCode() >= 300 {
+		request, err := opts.GetJSONData()
+		if err != nil {
+			request = ""
+		}
+
+		errMsg := protocol.MakeError(opts.GetCode(), topic, request, "", sender, "")
+		self.ReportError(errMsg)
 	}
 
 	err = self.backend.Publish(topic, opts.ToSentRequest(sender))

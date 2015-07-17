@@ -1,6 +1,7 @@
 package gilmour
 
 import (
+	"encoding/json"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
 )
 
@@ -54,6 +55,15 @@ func (self *Publisher) GetHandler() Handler {
 
 func (self *Publisher) GetData() interface{} {
 	return self.data
+}
+
+func (self *Publisher) GetJSONData() (string, error) {
+	data, err := json.Marshal(self.data)
+	if err != nil {
+		return "", nil
+	} else {
+		return string(data), err
+	}
 }
 
 func (self *Publisher) SetData(data interface{}) *Publisher {
