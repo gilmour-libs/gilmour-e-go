@@ -1,7 +1,6 @@
 package gilmour
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,7 +16,7 @@ func BindSignals(engine *Gilmour) {
 	go func() {
 		<-sigc
 		engine.Stop()
-		log.Println("Shutting down engines.")
+		log.Info("Shutting down engines.")
 		os.Exit(0)
 	}()
 }

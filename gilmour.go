@@ -3,10 +3,13 @@ package gilmour
 import (
 	"errors"
 	"fmt"
+	"gopkg.in/gilmour-libs/gilmour-go.v0/logger"
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
 	"sync"
 	"time"
 )
+
+var log = logger.Logger
 
 func Get(backend Backend) *Gilmour {
 	x := Gilmour{}
@@ -212,7 +215,7 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 		timeout := opts.GetTimeout()
 		if timeout > 0 {
 			time.AfterFunc(time.Duration(timeout)*time.Second, func() {
-				fmt.Println("Timing out after", timeout)
+				log.Info("Publisher time out", "Timeout", timeout)
 				self.sendTimeout(respChannel)
 			})
 		}
@@ -233,13 +236,13 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 func (self *Gilmour) processMessage(msg *protocol.Message) {
 	subs, ok := self.subscribers[msg.Key]
 	if !ok || len(subs) == 0 {
-		fmt.Println("No subs found!! Key: " + msg.Key)
+		log.Warn("Message cannot be processed. No subs found.", "key", msg.Key)
 		return
 	}
 
 	for _, s := range subs {
 		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
-			fmt.Println("Message to", msg.Key, msg.Topic, "is one shot")
+			log.Info("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
 			self.Unsubscribe(msg.Key, s)
 		}
 
@@ -256,7 +259,7 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 	opts := s.GetOpts()
 	if opts.GetGroup() != protocol.BLANK &&
 		!self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
-		fmt.Println("Cannot acquire Lock to process request.")
+		log.Warn("Message cannot be processed. Unable to acquire Lock.", "Group", opts.GetGroup(), "Sender", d.GetSender())
 		return
 	}
 
@@ -264,7 +267,7 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 }
 
 func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.RecvRequest) {
-	req := NewRequest(topic, d)
+	req := NewRequest(topic, *d)
 	res := NewResponse(self.backend.ResponseTopic(d.GetSender()))
 
 	done := make(chan bool, 1)

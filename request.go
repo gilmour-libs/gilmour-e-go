@@ -2,11 +2,13 @@ package gilmour
 
 import (
 	"gopkg.in/gilmour-libs/gilmour-go.v0/protocol"
+	log15 "gopkg.in/inconshreveable/log15.v2"
 )
 
 type Request struct {
-	topic string
-	gData *protocol.RecvRequest
+	topic  string
+	gData  protocol.RecvRequest
+	Logger log15.Logger
 }
 
 func (self *Request) Sender() string {
@@ -33,6 +35,7 @@ func (self *Request) StringData() []byte {
 	return self.gData.RawData()
 }
 
-func NewRequest(t string, gd *protocol.RecvRequest) *Request {
-	return &Request{t, gd}
+func NewRequest(t string, gd protocol.RecvRequest) *Request {
+	log := log.New("topic", t, "sender", gd.GetSender())
+	return &Request{t, gd, log}
 }
