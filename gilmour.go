@@ -200,18 +200,29 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 	//Always generate a senderId for the message being sent out
 
 	if opts.GetHandler() != nil {
+		//If a handler is being supplied, subscribe to a response
+		respChannel := self.backend.ResponseTopic(sender)
+
+		//Wait for a responseHandler
+		handlerOpts := MakeHandlerOpts().SetOneShot().SetSendResponse(false)
+		self.Subscribe(respChannel, opts.GetHandler(), handlerOpts)
+
 		if opts.ShouldConfirmSubscriber() {
 			has, err2 := self.backend.HasActiveSubscribers(topic)
 			if err2 != nil {
+				err = err2
 				return
-			} else if !has {
-				err = errors.New("No active subscribers available for: " + topic)
+			}
+
+			if !has {
+				opts := NewPublisher().
+					SetCode(404).
+					SetData("No active subscribers available for: " + topic)
+
+				_, err = self.Publish(respChannel, opts)
 				return
 			}
 		}
-
-		//If a handler is being supplied, subscribe to a response
-		respChannel := self.backend.ResponseTopic(sender)
 
 		timeout := opts.GetTimeout()
 		if timeout > 0 {
@@ -220,9 +231,6 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 			})
 		}
 
-		//Wait for a responseHandler
-		handlerOpts := MakeHandlerOpts().SetOneShot().SetSendResponse(false)
-		self.Subscribe(respChannel, opts.GetHandler(), handlerOpts)
 	}
 
 	if opts.GetCode() == 0 {
@@ -252,7 +260,7 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 
 	for _, s := range subs {
 		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
-			log.Warn("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
+			log.Info("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
 			self.Unsubscribe(msg.Key, s)
 		}
 

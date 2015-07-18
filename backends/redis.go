@@ -199,9 +199,9 @@ func (self *Redis) setupListeners(sink chan *protocol.Message) {
 				msg := &protocol.Message{"message", v.Channel, v.Data, v.Channel}
 				sink <- msg
 			case redis.Subscription:
-				log.Debug("PubSub event", "Channel", v.Channel, "Kind", v.Kind, "Count", v.Count)
+				//log.Debug("PubSub event", "Channel", v.Channel, "Kind", v.Kind, "Count", v.Count)
 			case redis.Pong:
-				log.Debug("Pong", "Data", v.Data)
+				//log.Debug("Pong", "Data", v.Data)
 			case error:
 				log.Error("Error", "message", v.Error())
 			}
