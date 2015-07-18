@@ -8,6 +8,7 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -180,11 +181,13 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 	engine.Publish(topic, pub_opts)
 
 	// Select Loop over channel, and timeout eventually.
-	select {
-	case result := <-out_chan:
-		out = append(out, result)
-	case <-time.After(time.Second * 5):
-		t.Error("Response should be twice, timed out instead")
+	for i := 0; i < count; i++ {
+		select {
+		case result := <-out_chan:
+			out = append(out, result)
+		case <-time.After(time.Second * 5):
+			t.Error("Response should be twice, timed out instead")
+		}
 	}
 
 	// Results should be received twice.
@@ -204,7 +207,57 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 }
 
 func TestSendOnceReceiveOnce(t *testing.T) {
-	//handler_opts := gilmour.MakeHandlerOpts().SetTimeout(timeout)
+	topic := randSeq(10)
+	count := 2
+
+	out := []string{}
+	subs := []*gilmour.Subscription{}
+	out_chan := make(chan string, count)
+
+	// Subscribe x no. of times
+	for i := 0; i < count; i++ {
+		data := fmt.Sprintf("hello %v", i)
+		opts := gilmour.MakeHandlerOpts().SetGroup("unique")
+		sub := engine.Subscribe(topic,
+			func(_ *gilmour.Request, _ *gilmour.Response) { out_chan <- data },
+			opts)
+		subs = append(subs, sub)
+	}
+
+	//Publish a message to random topic
+	pub_opts := gilmour.NewPublisher().SetData("ping?")
+	engine.Publish(topic, pub_opts)
+
+	// Select Case, once and that should work.
+	select {
+	case result := <-out_chan:
+		out = append(out, result)
+	case <-time.After(time.Second * 2):
+		t.Error("Response should be twice, timed out instead")
+	}
+
+	//Same code, should fail the second time.
+	select {
+	case <-out_chan:
+		t.Error("Should not receive a value on second handler.")
+	case <-time.After(time.Second * 2):
+		out = append(out, "Ok")
+	}
+
+	// Results should be received twice.
+	if len(out) != count {
+		t.Error("Response should be returned ", count, "items. Found", out)
+	}
+
+	// cleanup. Ubsubscribe from all subscribed channels.
+	for _, sub := range subs {
+		engine.Unsubscribe(topic, sub)
+	}
+
+	// Confirm that the topic was Indeed unsubscribed.
+	if has, _ := isTopicSubscribed(topic); has {
+		t.Error("Topic", topic, "should have been unsubscribed")
+	}
 }
 
 func TestHealthResponse(t *testing.T) {
@@ -242,6 +295,37 @@ func TestHealthResponse(t *testing.T) {
 }
 
 func TestReceiveOnWildcard(t *testing.T) {
+	topic := fmt.Sprintf("%v*", PingTopic)
+	out_chan := make(chan string, 1)
+
+	//Subscribe to the wildcard topic.
+	sub := engine.Subscribe(
+		topic,
+		func(_ *gilmour.Request, _ *gilmour.Response) {
+			out_chan <- PingResponse
+		},
+		nil,
+	)
+
+	//Publish a message to random topic
+	pub_opts := gilmour.NewPublisher().SetData("ping?")
+	engine.Publish("pingworld", pub_opts)
+
+	// Select Case, once and that should work.
+	select {
+	case <-out_chan:
+		// True Case.
+	case <-time.After(time.Second * 2):
+		t.Error("Response should be received, timed out instead")
+	}
+
+	// cleanup. Ubsubscribe from all subscribed channels.
+	engine.Unsubscribe(topic, sub)
+
+	// Confirm that the topic was Indeed unsubscribed.
+	if has, _ := isTopicSubscribed(topic); has {
+		t.Error("Topic", topic, "should have been unsubscribed")
+	}
 }
 
 func TestSendAndReceive(t *testing.T) {
@@ -318,32 +402,23 @@ func TestConfirmSansListener(t *testing.T) {
 
 	_, err := engine.Publish("ping-confirm-sans-listener", pub_opts)
 	if err != nil {
-		t.Error(err)
+		if !strings.Contains(err.Error(), "active subscribers") {
+			t.Error(err.Error())
+		}
 	}
 }
 
 func TestHandlerConfirmSansListener(t *testing.T) {
-	out_chan := make(chan int, 1)
-
 	pub_opts := gilmour.NewPublisher().
 		SetData("ping?").
 		ConfirmSubscriber().
-		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
-		out_chan <- req.Code()
-	})
+		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {})
 
 	_, err := engine.Publish("ping-confirm-sans-listener", pub_opts)
 	if err != nil {
-		out_chan <- 500
-	}
-
-	select {
-	case code := <-out_chan:
-		if code != 404 {
-			t.Error("Response should be", 404, "Found", code)
+		if !strings.Contains(err.Error(), "active subscribers") {
+			t.Error(err.Error())
 		}
-	case <-time.After(time.Second * 5):
-		t.Error("Response should be", 404, "timed out instead")
 	}
 }
 

@@ -34,7 +34,7 @@ func (self *HandlerOpts) ShouldSendResponse() bool {
 	return self.sendResponse
 }
 
-func (self *HandlerOpts) SetSendResponse(send bool) *HandlerOpts {
+func (self *HandlerOpts) DontSendResponse(send bool) *HandlerOpts {
 	self.sendResponse = send
 	return self
 }

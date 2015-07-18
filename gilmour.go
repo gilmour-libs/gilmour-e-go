@@ -199,30 +199,26 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 	sender = protocol.MakeSenderId()
 	//Always generate a senderId for the message being sent out
 
+	if opts.ShouldConfirmSubscriber() {
+		has, err2 := self.backend.HasActiveSubscribers(topic)
+		if err2 != nil {
+			err = err2
+			return
+		}
+
+		if !has {
+			err = errors.New("No active subscribers available for: " + topic)
+			return
+		}
+	}
+
 	if opts.GetHandler() != nil {
 		//If a handler is being supplied, subscribe to a response
 		respChannel := self.backend.ResponseTopic(sender)
 
 		//Wait for a responseHandler
-		handlerOpts := MakeHandlerOpts().SetOneShot().SetSendResponse(false)
+		handlerOpts := MakeHandlerOpts().SetOneShot().DontSendResponse(false)
 		self.Subscribe(respChannel, opts.GetHandler(), handlerOpts)
-
-		if opts.ShouldConfirmSubscriber() {
-			has, err2 := self.backend.HasActiveSubscribers(topic)
-			if err2 != nil {
-				err = err2
-				return
-			}
-
-			if !has {
-				opts := NewPublisher().
-					SetCode(404).
-					SetData("No active subscribers available for: " + topic)
-
-				_, err = self.Publish(respChannel, opts)
-				return
-			}
-		}
 
 		timeout := opts.GetTimeout()
 		if timeout > 0 {
