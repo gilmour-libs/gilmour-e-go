@@ -85,7 +85,7 @@ func TestHealthSubscribe(t *testing.T) {
 func TestSubscribePing(t *testing.T) {
 	timeout := 3
 	handler_opts := gilmour.MakeHandlerOpts().SetTimeout(timeout)
-	sub := engine.Subscribe(PingTopic, func(req *gilmour.Request, resp *gilmour.Response) {
+	sub, _ := engine.Subscribe(PingTopic, func(req *gilmour.Request, resp *gilmour.Response) {
 		var x string
 		req.Data(&x)
 		req.Logger.Debug(PingTopic, "Received", x)
@@ -98,14 +98,23 @@ func TestSubscribePing(t *testing.T) {
 		t.Error("Handler should have timeout of", timeout, "seconds. Found", actualTimeout)
 	}
 
-	has, _ := isTopicSubscribed(PingTopic)
-	if has != true {
+	if has, _ := isTopicSubscribed(PingTopic); !has {
 		t.Error("Topic", PingTopic, "should have been subscribed")
 	}
 }
 
+func TestWildcardGroup(t *testing.T) {
+	opts := gilmour.MakeHandlerOpts().SetGroup("wildcard_group")
+	topic := fmt.Sprintf("%v*", PingTopic)
+	_, err := engine.Subscribe(topic, func(req *gilmour.Request, resp *gilmour.Response) {}, opts)
+
+	if err == nil || !strings.Contains(err.Error(), "cannot have") {
+		t.Error("Wildcars cannot belong to a Group")
+	}
+}
+
 func TestSubscribeSleep(t *testing.T) {
-	sub := engine.Subscribe(
+	sub, _ := engine.Subscribe(
 		SleepTopic,
 		func(req *gilmour.Request, resp *gilmour.Response) {
 			var delay int
@@ -143,7 +152,7 @@ func TestHealthGetAll(t *testing.T) {
 
 func TestUnsubscribe(t *testing.T) {
 	topic := randSeq(10)
-	sub := engine.Subscribe(topic, func(req *gilmour.Request, resp *gilmour.Response) {}, nil)
+	sub, _ := engine.Subscribe(topic, func(req *gilmour.Request, resp *gilmour.Response) {}, nil)
 
 	if has, _ := isTopicSubscribed(topic); !has {
 		t.Error(topic, "should have been subscribed")
@@ -170,7 +179,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 	// Subscribe x no. of times
 	for i := 0; i < count; i++ {
 		data := fmt.Sprintf("hello %v", i)
-		sub := engine.Subscribe(topic,
+		sub, _ := engine.Subscribe(topic,
 			func(_ *gilmour.Request, _ *gilmour.Response) { out_chan <- data },
 			nil)
 		subs = append(subs, sub)
@@ -218,7 +227,7 @@ func TestSendOnceReceiveOnce(t *testing.T) {
 	for i := 0; i < count; i++ {
 		data := fmt.Sprintf("hello %v", i)
 		opts := gilmour.MakeHandlerOpts().SetGroup("unique")
-		sub := engine.Subscribe(topic,
+		sub, _ := engine.Subscribe(topic,
 			func(_ *gilmour.Request, _ *gilmour.Response) { out_chan <- data },
 			opts)
 		subs = append(subs, sub)
@@ -299,7 +308,7 @@ func TestReceiveOnWildcard(t *testing.T) {
 	out_chan := make(chan string, 1)
 
 	//Subscribe to the wildcard topic.
-	sub := engine.Subscribe(
+	sub, _ := engine.Subscribe(
 		topic,
 		func(_ *gilmour.Request, _ *gilmour.Response) {
 			out_chan <- PingResponse
@@ -381,7 +390,46 @@ func TestPublisherTimeout(t *testing.T) {
 	}
 }
 
+func TestNoPublisher(t *testing.T) {
+	_, err := engine.Publish(PingTopic, nil)
+	if err == nil || !strings.Contains(err.Error(), "provide publisher") {
+		t.Error("Must provide publisher to be published")
+	}
+}
+
 func TestSubscriberTimeout(t *testing.T) {
+	out_chan := make(chan string, 1)
+	topic := "sleep_delayed"
+
+	sub, _ := engine.Subscribe(
+		topic,
+		func(req *gilmour.Request, resp *gilmour.Response) {
+			time.Sleep(time.Second * 4)
+			resp.Respond(PingResponse)
+		},
+		gilmour.MakeHandlerOpts().SetTimeout(3),
+	)
+
+	opts := gilmour.NewPublisher().
+		SetData("send"). //Will Sleep for 5 seconds.
+		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
+		var x string
+		req.Data(&x)
+		out_chan <- x
+	})
+
+	engine.Publish(topic, opts)
+
+	select {
+	case result := <-out_chan:
+		if result != "Execution timed out" {
+			t.Error("Response should be", PingResponse, "Found", result)
+		}
+	case <-time.After(time.Second * 5):
+		t.Error("Response should be", PingResponse, "timed out instead")
+	}
+
+	engine.Unsubscribe(topic, sub)
 }
 
 func TestHandlerException(t *testing.T) {

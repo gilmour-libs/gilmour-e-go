@@ -136,12 +136,23 @@ func (self *Gilmour) addSubscriber(topic string, h Handler, opts *HandlerOpts) *
 	return sub
 }
 
-func (self *Gilmour) Subscribe(topic string, h Handler, opts *HandlerOpts) *Subscription {
+func (self *Gilmour) Subscribe(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
 	if _, ok := self.subscribers[topic]; !ok {
-		self.backend.Subscribe(topic)
+		var group string
+
+		if opts != nil {
+			group = opts.GetGroup()
+		} else {
+			group = protocol.BLANK
+		}
+
+		err := self.backend.Subscribe(topic, group)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return self.addSubscriber(topic, h, opts)
+	return self.addSubscriber(topic, h, opts), nil
 }
 
 func (self *Gilmour) Unsubscribe(topic string, s *Subscription) {
@@ -198,6 +209,11 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 
 	sender = protocol.MakeSenderId()
 	//Always generate a senderId for the message being sent out
+
+	if opts == nil {
+		err = errors.New("Must provide publisher to be published")
+		return
+	}
 
 	if opts.ShouldConfirmSubscriber() {
 		has, err2 := self.backend.HasActiveSubscribers(topic)
