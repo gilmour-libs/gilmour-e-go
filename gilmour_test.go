@@ -1,10 +1,12 @@
 package gilmour
 
 import (
+	"fmt"
 	redigo "github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0/backends"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
+	"math/rand"
 	"os"
 	"sync"
 	"testing"
@@ -19,6 +21,17 @@ const (
 
 var engine *gilmour.Gilmour
 var redis *backends.Redis
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randSeq(n int) string {
+	rand.Seed(time.Now().UTC().UnixNano())
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
 
 func compare(X, Y []string) []string {
 	m := make(map[string]int)
@@ -39,6 +52,35 @@ func compare(X, Y []string) []string {
 	return ret
 }
 
+func isTopicSubscribed(topic string) (has bool, err error) {
+	conn := redis.GetConn()
+	defer conn.Close()
+
+	idents, err2 := redigo.Strings(conn.Do("PUBSUB", "CHANNELS"))
+	if err2 != nil {
+		err = err2
+		return
+	}
+
+	for _, t := range idents {
+		if t == topic {
+			has = true
+			break
+		}
+	}
+
+	return
+}
+
+func TestHealthSubscribe(t *testing.T) {
+	engine.SetHealthCheckEnabled()
+
+	topic := redis.HealthTopic(engine.GetIdent())
+	if has, _ := isTopicSubscribed(topic); !has {
+		t.Error(topic, "should have been subscribed")
+	}
+}
+
 func TestSubscribePing(t *testing.T) {
 	timeout := 3
 	handler_opts := gilmour.MakeHandlerOpts().SetTimeout(timeout)
@@ -53,6 +95,11 @@ func TestSubscribePing(t *testing.T) {
 
 	if actualTimeout != timeout {
 		t.Error("Handler should have timeout of", timeout, "seconds. Found", actualTimeout)
+	}
+
+	has, _ := isTopicSubscribed(PingTopic)
+	if has != true {
+		t.Error("Topic", PingTopic, "should have been subscribed")
 	}
 }
 
@@ -72,6 +119,10 @@ func TestSubscribeSleep(t *testing.T) {
 	if actualTimeout != 600 {
 		t.Error("Handler should have default timeout of 600, Found", actualTimeout)
 	}
+
+	if has, _ := isTopicSubscribed(SleepTopic); !has {
+		t.Error("Topic", SleepTopic, "should have been subscribed")
+	}
 }
 
 func TestHealthGetAll(t *testing.T) {
@@ -87,6 +138,73 @@ func TestHealthGetAll(t *testing.T) {
 	if !ok || val != "true" {
 		t.Error("Ident is missing in the Health ident")
 	}
+}
+
+func TestUnsubscribe(t *testing.T) {
+	topic := randSeq(10)
+	sub := engine.Subscribe(topic, func(req *gilmour.Request, resp *gilmour.Response) {}, nil)
+
+	if has, _ := isTopicSubscribed(topic); !has {
+		t.Error(topic, "should have been subscribed")
+	}
+
+	engine.Unsubscribe(topic, sub)
+
+	if has, _ := isTopicSubscribed(topic); has {
+		t.Error("Topic", topic, "should have been unsubscribed")
+	}
+}
+
+func TestRelayFromSubscriber(t *testing.T) {
+}
+
+func TestSendOnceReceiveTwice(t *testing.T) {
+	topic := randSeq(10)
+	count := 2
+
+	out := []string{}
+	subs := []*gilmour.Subscription{}
+	out_chan := make(chan string, count)
+
+	// Subscribe x no. of times
+	for i := 0; i < count; i++ {
+		data := fmt.Sprintf("hello %v", i)
+		sub := engine.Subscribe(topic,
+			func(_ *gilmour.Request, _ *gilmour.Response) { out_chan <- data },
+			nil)
+		subs = append(subs, sub)
+	}
+
+	//Publish a message to random topic
+	pub_opts := gilmour.NewPublisher().SetData("ping?")
+	engine.Publish(topic, pub_opts)
+
+	// Select Loop over channel, and timeout eventually.
+	select {
+	case result := <-out_chan:
+		out = append(out, result)
+	case <-time.After(time.Second * 5):
+		t.Error("Response should be twice, timed out instead")
+	}
+
+	// Results should be received twice.
+	if len(out) != count {
+		t.Error("Response should be returned ", count, "items. Found", out)
+	}
+
+	// cleanup. Ubsubscribe from all subscribed channels.
+	for _, sub := range subs {
+		engine.Unsubscribe(topic, sub)
+	}
+
+	// Confirm that the topic was Indeed unsubscribed.
+	if has, _ := isTopicSubscribed(topic); has {
+		t.Error("Topic", topic, "should have been unsubscribed")
+	}
+}
+
+func TestSendOnceReceiveOnce(t *testing.T) {
+	//handler_opts := gilmour.MakeHandlerOpts().SetTimeout(timeout)
 }
 
 func TestHealthResponse(t *testing.T) {
@@ -123,6 +241,9 @@ func TestHealthResponse(t *testing.T) {
 	}
 }
 
+func TestReceiveOnWildcard(t *testing.T) {
+}
+
 func TestSendAndReceive(t *testing.T) {
 	out_chan := make(chan string, 1)
 
@@ -149,7 +270,7 @@ func TestSendAndReceive(t *testing.T) {
 	}
 }
 
-func TestWithTimeout(t *testing.T) {
+func TestPublisherTimeout(t *testing.T) {
 	out_chan := make(chan string, 1)
 
 	opts := gilmour.NewPublisher().
@@ -174,6 +295,12 @@ func TestWithTimeout(t *testing.T) {
 	case <-time.After(time.Second * 5):
 		t.Error("Response should be", PingResponse, "timed out instead")
 	}
+}
+
+func TestSubscriberTimeout(t *testing.T) {
+}
+
+func TestHandlerException(t *testing.T) {
 }
 
 func TestSansListener(t *testing.T) {
@@ -235,7 +362,6 @@ func TestMain(m *testing.M) {
 	redis = backends.MakeRedis("127.0.0.1:6379")
 	engine = gilmour.Get(redis)
 
-	engine.SetHealthCheckEnabled()
 	engine.Start()
 
 	logger.Logger.Info("Starting Engine")

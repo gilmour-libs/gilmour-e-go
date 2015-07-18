@@ -296,6 +296,10 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 		done <- true
 	}(done)
 
+	// Start a timeout handler, which writes on the Done channel, ahead of the
+	// Handler. This might result in a RACE condition, as there is no way to
+	// kill a goroutine, since they are not preemptive.
+
 	timeout := s.GetOpts().GetTimeout()
 	time.AfterFunc(time.Duration(timeout)*time.Second, func() {
 		done <- false
@@ -319,6 +323,13 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 			}
 		}
 
+	} else {
+		// Inform the error catcher, If there is no handler for this Request
+		// but the request had failed. This is automatically handled in case
+		// of a response being written via Publisher.
+		request := string(req.StringData())
+		errMsg := protocol.MakeError(499, topic, request, "", req.Sender(), "")
+		self.ReportError(errMsg)
 	}
 }
 
