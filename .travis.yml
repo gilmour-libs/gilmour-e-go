@@ -1,0 +1,15 @@
+language: go
+
+go:
+  - tip
+
+services:
+  - redis-server
+
+script:
+  - go test -v ./...
+  - go build -v ./...
+
+notifications:
+  email:
+    - piyush@piyushverma.net
