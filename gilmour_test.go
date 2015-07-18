@@ -433,6 +433,36 @@ func TestSubscriberTimeout(t *testing.T) {
 }
 
 func TestHandlerException(t *testing.T) {
+	out_chan := make(chan int, 1)
+	topic := randSeq(10)
+
+	sub, _ := engine.Subscribe(
+		topic,
+		func(req *gilmour.Request, resp *gilmour.Response) {
+			// Just to induce errors, access a null pointers's method.
+			var x *HandlerOpts
+			log.Debug(x.GetGroup())
+		}, nil,
+	)
+
+	opts := gilmour.NewPublisher().
+		SetData("send"). //Will Sleep for 5 seconds.
+		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
+		out_chan <- req.Code()
+	})
+
+	engine.Publish(topic, opts)
+
+	select {
+	case result := <-out_chan:
+		if result != 500 {
+			t.Error("Response should raise exception")
+		}
+	case <-time.After(time.Second * 5):
+		t.Error("Response should have raised Exception, timed out instead")
+	}
+
+	engine.Unsubscribe(topic, sub)
 }
 
 func TestSansListener(t *testing.T) {

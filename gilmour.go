@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -304,6 +305,26 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 
 	//Executing Request
 	go func(done chan<- bool) {
+
+		// Schedule a function to recover in case handler runs into an error.
+		// Read more: https://gist.github.com/meson10/d56eface6f87c664d07d
+
+		defer func() {
+			err := recover()
+			if err == nil {
+				return
+			}
+
+			const size = 4096
+			buf := make([]byte, size)
+			buf = buf[:runtime.Stack(buf, false)]
+			buffer := string(buf)
+			res.RespondWithCode(buffer, 500)
+
+			done <- true
+
+		}()
+
 		s.GetHandler()(req, res)
 		done <- true
 	}(done)
@@ -335,7 +356,7 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 			}
 		}
 
-	} else {
+	} else if status == false {
 		// Inform the error catcher, If there is no handler for this Request
 		// but the request had failed. This is automatically handled in case
 		// of a response being written via Publisher.
