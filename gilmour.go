@@ -14,7 +14,7 @@ var log = logger.Logger
 
 func Get(backend Backend) *Gilmour {
 	x := Gilmour{}
-	x.subscribers = map[string][]*Subscription{}
+	x.subscriber = NewSubscriptionManager()
 	x.addBackend(backend)
 	return &x
 }
@@ -26,7 +26,7 @@ type Gilmour struct {
 	backend           Backend
 	ident             string
 	errorMethod       string
-	subscribers       map[string][]*Subscription
+	subscriber        Subscriber
 }
 
 func (self *Gilmour) sendTimeout(channel string, timeout int) {
@@ -83,62 +83,28 @@ func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
 	return self
 }
 
-func (self *Gilmour) removeSubscribers(topic string) (err error) {
-	self.subscriberMutex.Lock()
-	defer self.subscriberMutex.Unlock()
-
-	self.subscribers[topic] = []*Subscription{}
-	return
+func (self *Gilmour) getAllSubscribers() map[string][]*Subscription {
+	return self.subscriber.GetAll()
 }
 
-func (self *Gilmour) removeSubscriber(topic string, s *Subscription) (err error) {
-	self.subscriberMutex.Lock()
-	defer self.subscriberMutex.Unlock()
-
-	list, ok := self.subscribers[topic]
-	if !ok {
-		err = errors.New("Subscribers list is already empty")
-		return
-	}
-
-	new_list := []*Subscription{}
-
-	for _, elem := range list {
-		if elem == s {
-			//Do nothing
-			continue
-		}
-
-		new_list = append(new_list, elem)
-	}
-
-	self.subscribers[topic] = new_list
-	if len(new_list) == 0 {
-		delete(self.subscribers, topic)
-	}
-
-	return
+func (self *Gilmour) getSubscribers(topic string) ([]*Subscription, bool) {
+	return self.subscriber.Get(topic)
 }
 
-func (self *Gilmour) addSubscriber(topic string, h Handler, opts *HandlerOpts) *Subscription {
-	self.subscriberMutex.Lock()
-	defer self.subscriberMutex.Unlock()
+func (self *Gilmour) removeSubscribers(topic string) {
+	self.subscriber.DeleteAll(topic)
+}
 
-	if _, ok := self.subscribers[topic]; !ok {
-		self.subscribers[topic] = []*Subscription{}
-	}
+func (self *Gilmour) removeSubscriber(topic string, s *Subscription) {
+	self.subscriber.Delete(topic, s)
+}
 
-	sub := &Subscription{h, opts}
-
-	arr := self.subscribers[topic]
-	arr = append(arr, sub)
-	self.subscribers[topic] = arr
-
-	return sub
+func (self *Gilmour) addSubscriber(t string, h Handler, o *HandlerOpts) *Subscription {
+	return self.subscriber.Add(t, h, o)
 }
 
 func (self *Gilmour) Subscribe(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
-	if _, ok := self.subscribers[topic]; !ok {
+	if _, ok := self.getSubscribers(topic); !ok {
 		var group string
 
 		if opts != nil {
@@ -157,12 +123,9 @@ func (self *Gilmour) Subscribe(topic string, h Handler, opts *HandlerOpts) (*Sub
 }
 
 func (self *Gilmour) Unsubscribe(topic string, s *Subscription) {
-	err := self.removeSubscriber(topic, s)
-	if err != nil {
-		panic(err)
-	}
+	self.removeSubscriber(topic, s)
 
-	if _, ok := self.subscribers[topic]; !ok {
+	if _, ok := self.getSubscribers(topic); !ok {
 		err := self.backend.Unsubscribe(topic)
 		if err != nil {
 			panic(err)
@@ -265,7 +228,7 @@ func (self *Gilmour) Publish(topic string, opts *Publisher) (sender string, err 
 }
 
 func (self *Gilmour) processMessage(msg *protocol.Message) {
-	subs, ok := self.subscribers[msg.Key]
+	subs, ok := self.getSubscribers(msg.Key)
 	if !ok || len(subs) == 0 {
 		log.Warn("Message cannot be processed. No subs found.", "key", msg.Key)
 		return
@@ -383,7 +346,7 @@ func (self *Gilmour) Stop() {
 	defer self.unregisterIdent()
 	defer self.backend.Stop()
 
-	for topic, _ := range self.subscribers {
+	for topic, _ := range self.getAllSubscribers() {
 		self.UnsubscribeAll(topic)
 	}
 }

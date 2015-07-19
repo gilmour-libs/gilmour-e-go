@@ -13,7 +13,7 @@ func subscribeHealth(self *Gilmour) {
 
 		resp_topic := self.backend.ResponseTopic("")
 
-		for t, _ := range self.subscribers {
+		for t, _ := range self.getAllSubscribers() {
 			if strings.HasPrefix(t, resp_topic) ||
 				strings.HasPrefix(t, health_topic) {
 				//Do Nothing, these are internal topics
