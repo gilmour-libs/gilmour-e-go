@@ -45,7 +45,20 @@ func (self *Error) GetBacktrace() interface{} {
 }
 
 func (self *Error) Marshal() ([]byte, error) {
-	return json.Marshal(self)
+	eStruct := struct {
+		Topic        string      `json:"topic"`
+		RequestData  string      `json:"request_data"`
+		UserData     string      `json:"user_data"`
+		Sender       string      `json:"sender"`
+		MultiProcess bool        `json:"multi_process"`
+		Timestamp    string      `json:"timestamp"`
+		Backtrace    interface{} `json:"backtrace"`
+		Code         int         `json:"code"`
+	}{self.topic, self.requestData, self.userData, self.sender, false,
+		self.timestamp, self.backtrace, self.code,
+	}
+
+	return json.Marshal(eStruct)
 }
 
 func MakeError(
