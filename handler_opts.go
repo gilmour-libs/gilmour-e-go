@@ -3,10 +3,10 @@ package gilmour
 const TIMEOUT = 600
 
 type HandlerOpts struct {
-	group        string
-	oneShot      bool
-	sendResponse bool
-	timeout      int
+	group   string
+	timeout int
+	oneShot bool
+	isSlot  bool
 }
 
 func (self *HandlerOpts) GetTimeout() int {
@@ -30,15 +30,6 @@ func (self *HandlerOpts) SetGroup(group string) *HandlerOpts {
 	return self
 }
 
-func (self *HandlerOpts) ShouldSendResponse() bool {
-	return self.sendResponse
-}
-
-func (self *HandlerOpts) DontSendResponse(send bool) *HandlerOpts {
-	self.sendResponse = send
-	return self
-}
-
 func (self *HandlerOpts) IsOneShot() bool {
 	return self.oneShot
 }
@@ -48,9 +39,19 @@ func (self *HandlerOpts) SetOneShot() *HandlerOpts {
 	return self
 }
 
+func (self *HandlerOpts) IsSlot() bool {
+	return self.isSlot
+}
+
+func (self *HandlerOpts) SetSlot() *HandlerOpts {
+	self.isSlot = true
+	return self
+}
+
 func MakeHandlerOpts() *HandlerOpts {
-	opts := HandlerOpts{}
-	opts.sendResponse = true
-	opts.timeout = TIMEOUT
-	return &opts
+	return NewHandlerOpts()
+}
+
+func NewHandlerOpts() *HandlerOpts {
+	return &HandlerOpts{}
 }

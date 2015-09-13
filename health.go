@@ -8,7 +8,9 @@ func subscribeHealth(self *Gilmour) {
 	ident := self.GetIdent()
 	health_topic := self.backend.HealthTopic(ident)
 
-	self.Subscribe(health_topic, func(r *Request, w *Response) {
+	handlerOpts := NewHandlerOpts().SetGroup("exclusive")
+
+	self.ReplyTo(health_topic, func(r *Request, w *Response) {
 		topics := []string{}
 
 		resp_topic := self.backend.ResponseTopic("")
@@ -22,6 +24,6 @@ func subscribeHealth(self *Gilmour) {
 			}
 		}
 
-		w.Respond(topics)
-	}, MakeHandlerOpts().SetGroup("exclusive"))
+		w.SetData(topics)
+	}, handlerOpts)
 }

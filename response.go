@@ -1,41 +1,62 @@
 package gilmour
 
 import (
-	"errors"
+	"encoding/json"
+
+	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
 )
 
 type Response struct {
-	senderchannel string
-	message       interface{}
-	code          int
-	responseSent  bool
+	data   interface{} `json:"data"`
+	code   int         `json:"code"`
+	sender string      `json:"sender"`
 }
 
-func (self *Response) isResponseSent() bool {
-	return self.responseSent
+func (self *Response) GetData() interface{} {
+	return self.data
 }
 
-func (self *Response) Respond(t interface{}) {
-	self.message = t
+func (self *Response) Send(data interface{}) {
+	self.SetData(data)
 }
 
-func (self *Response) RespondWithCode(t interface{}, code int) {
-	self.message = t
-	self.code = code
-}
-
-func (self *Response) Send() (err error) {
-	if self.responseSent {
-		err = errors.New("Response already sent.")
-		return
+func (self *Response) SetData(data interface{}) *Response {
+	if self.data != nil {
+		panic("Cannot rewrite data for response.")
 	}
 
-	self.responseSent = true
-	return
+	self.data = data
+	return self
 }
 
-func NewResponse(channel string) *Response {
-	x := Response{}
-	x.senderchannel = channel
-	return &x
+func (self *Response) GetCode() int {
+	return self.code
+}
+
+func (self *Response) SetCode(code int) *Response {
+	self.code = code
+	return self
+}
+
+func (self *Response) GetSender() string {
+	return self.sender
+}
+
+func (self *Response) SetSender(sender string) *Response {
+	self.sender = sender
+	return self
+}
+
+func (self *Response) Marshal() ([]byte, error) {
+	return json.Marshal(struct {
+		Data   interface{} `json:"data"`
+		Code   int         `json:"code"`
+		Sender string      `json:"sender"`
+	}{self.data, self.code, self.sender})
+}
+
+func NewResponse() *Response {
+	x := &Response{}
+	x.SetSender(protocol.MakeSenderId())
+	return x
 }

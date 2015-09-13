@@ -2,16 +2,16 @@ package gilmour
 
 import (
 	"fmt"
-	redigo "github.com/garyburd/redigo/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
 	"math/rand"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	redigo "github.com/garyburd/redigo/redis"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v0/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	SleepTopic   = "sleepy-ping"
 )
 
-var engine *gilmour.Gilmour
+var engine *Gilmour
 var redis *backends.Redis
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -84,12 +84,12 @@ func TestHealthSubscribe(t *testing.T) {
 
 func TestSubscribePing(t *testing.T) {
 	timeout := 3
-	handler_opts := gilmour.MakeHandlerOpts().SetTimeout(timeout)
-	sub, _ := engine.Subscribe(PingTopic, func(req *gilmour.Request, resp *gilmour.Response) {
+	handler_opts := MakeHandlerOpts().SetTimeout(timeout)
+	sub, _ := engine.ReplyTo(PingTopic, func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
 		req.Logger.Debug(PingTopic, "Received", x)
-		resp.Respond(PingResponse)
+		resp.Send(PingResponse)
 	}, handler_opts)
 
 	actualTimeout := sub.GetOpts().GetTimeout()
@@ -104,9 +104,9 @@ func TestSubscribePing(t *testing.T) {
 }
 
 func TestWildcardGroup(t *testing.T) {
-	opts := gilmour.MakeHandlerOpts().SetGroup("wildcard_group")
+	opts := MakeHandlerOpts().SetGroup("wildcard_group")
 	topic := fmt.Sprintf("%v*", PingTopic)
-	_, err := engine.Subscribe(topic, func(req *gilmour.Request, resp *gilmour.Response) {}, opts)
+	_, err := engine.Slot(topic, func(req *Request, resp *Response) {}, opts)
 
 	if err == nil || !strings.Contains(err.Error(), "cannot have") {
 		t.Error("Wildcars cannot belong to a Group")
@@ -114,13 +114,13 @@ func TestWildcardGroup(t *testing.T) {
 }
 
 func TestSubscribeSleep(t *testing.T) {
-	sub, _ := engine.Subscribe(
+	sub, _ := engine.ReplyTo(
 		SleepTopic,
-		func(req *gilmour.Request, resp *gilmour.Response) {
+		func(req *Request, resp *Response) {
 			var delay int
 			req.Data(&delay)
 			time.Sleep(time.Duration(delay) * time.Second)
-			resp.Respond(PingResponse)
+			resp.Send(PingResponse)
 		}, nil,
 	)
 
@@ -152,7 +152,7 @@ func TestHealthGetAll(t *testing.T) {
 
 func TestUnsubscribe(t *testing.T) {
 	topic := randSeq(10)
-	sub, _ := engine.Subscribe(topic, func(req *gilmour.Request, resp *gilmour.Response) {}, nil)
+	sub, _ := engine.Slot(topic, func(req *Request, resp *Response) {}, nil)
 
 	if has, _ := isTopicSubscribed(topic); !has {
 		t.Error(topic, "should have been subscribed")
@@ -173,21 +173,21 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 	count := 2
 
 	out := []string{}
-	subs := []*gilmour.Subscription{}
+	subs := []*Subscription{}
 	out_chan := make(chan string, count)
 
 	// Subscribe x no. of times
 	for i := 0; i < count; i++ {
 		data := fmt.Sprintf("hello %v", i)
-		sub, _ := engine.Subscribe(topic,
-			func(_ *gilmour.Request, _ *gilmour.Response) { out_chan <- data },
+		sub, _ := engine.Slot(topic,
+			func(_ *Request, _ *Response) { out_chan <- data },
 			nil)
 		subs = append(subs, sub)
 	}
 
 	//Publish a message to random topic
-	pub_opts := gilmour.NewPublisher().SetData("ping?")
-	engine.Publish(topic, pub_opts)
+	pub_opts := NewResponse().SetData("ping?")
+	engine.Signal(topic, pub_opts)
 
 	// Select Loop over channel, and timeout eventually.
 	for i := 0; i < count; i++ {
@@ -220,22 +220,21 @@ func TestSendOnceReceiveOnce(t *testing.T) {
 	count := 2
 
 	out := []string{}
-	subs := []*gilmour.Subscription{}
+	subs := []*Subscription{}
 	out_chan := make(chan string, count)
 
 	// Subscribe x no. of times
 	for i := 0; i < count; i++ {
 		data := fmt.Sprintf("hello %v", i)
-		opts := gilmour.MakeHandlerOpts().SetGroup("unique")
-		sub, _ := engine.Subscribe(topic,
-			func(_ *gilmour.Request, _ *gilmour.Response) { out_chan <- data },
+		opts := MakeHandlerOpts().SetGroup("unique")
+		sub, _ := engine.Slot(topic,
+			func(_ *Request, _ *Response) { out_chan <- data },
 			opts)
 		subs = append(subs, sub)
 	}
 
 	//Publish a message to random topic
-	pub_opts := gilmour.NewPublisher().SetData("ping?")
-	engine.Publish(topic, pub_opts)
+	engine.Signal(topic, NewResponse().SetData("ping?"))
 
 	// Select Case, once and that should work.
 	select {
@@ -272,9 +271,10 @@ func TestSendOnceReceiveOnce(t *testing.T) {
 func TestHealthResponse(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	opts := gilmour.NewPublisher().
-		SetData("is-healthy?").
-		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
+	data := NewResponse().SetData("is-healthy?")
+
+	opts := NewRequestOpts().
+		SetHandler(func(req *Request, resp *Response) {
 		x := []string{}
 		expected := []string{PingTopic, SleepTopic}
 
@@ -288,7 +288,7 @@ func TestHealthResponse(t *testing.T) {
 		}
 	})
 
-	_, err := engine.Publish(redis.HealthTopic(engine.GetIdent()), opts)
+	_, err := engine.Request(redis.HealthTopic(engine.GetIdent()), data, opts)
 	if err != nil {
 		t.Error(err)
 	}
@@ -308,17 +308,16 @@ func TestReceiveOnWildcard(t *testing.T) {
 	out_chan := make(chan string, 1)
 
 	//Subscribe to the wildcard topic.
-	sub, _ := engine.Subscribe(
+	sub, _ := engine.Slot(
 		topic,
-		func(_ *gilmour.Request, _ *gilmour.Response) {
+		func(_ *Request, _ *Response) {
 			out_chan <- PingResponse
 		},
 		nil,
 	)
 
 	//Publish a message to random topic
-	pub_opts := gilmour.NewPublisher().SetData("ping?")
-	engine.Publish("pingworld", pub_opts)
+	engine.Signal("pingworld", NewResponse().SetData("ping?"))
 
 	// Select Case, once and that should work.
 	select {
@@ -340,15 +339,16 @@ func TestReceiveOnWildcard(t *testing.T) {
 func TestSendAndReceive(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	opts := gilmour.NewPublisher().
-		SetData("ping?").
-		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
+	data := NewResponse().SetData("ping?")
+
+	opts := NewRequestOpts().
+		SetHandler(func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
 	})
 
-	_, err := engine.Publish(PingTopic, opts)
+	_, err := engine.Request(PingTopic, data, opts)
 	if err != nil {
 		t.Error(err)
 	}
@@ -366,16 +366,17 @@ func TestSendAndReceive(t *testing.T) {
 func TestPublisherTimeout(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	opts := gilmour.NewPublisher().
-		SetData(5).    //Will Sleep for 5 seconds.
-		SetTimeout(2). //Will expect response in 2 seconds.
-		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
+	data := NewResponse().SetData(5)
+
+	opts := NewRequestOpts().
+		SetTimeout(2).
+		SetHandler(func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
 	})
 
-	_, err := engine.Publish(SleepTopic, opts)
+	_, err := engine.Request(SleepTopic, data, opts)
 	if err != nil {
 		t.Error(err)
 	}
@@ -391,7 +392,7 @@ func TestPublisherTimeout(t *testing.T) {
 }
 
 func TestNoPublisher(t *testing.T) {
-	_, err := engine.Publish(PingTopic, nil)
+	_, err := engine.Signal(PingTopic, nil)
 	if err == nil || !strings.Contains(err.Error(), "provide publisher") {
 		t.Error("Must provide publisher to be published")
 	}
@@ -401,24 +402,24 @@ func TestSubscriberTimeout(t *testing.T) {
 	out_chan := make(chan string, 1)
 	topic := "sleep_delayed"
 
-	sub, _ := engine.Subscribe(
+	sub, _ := engine.ReplyTo(
 		topic,
-		func(req *gilmour.Request, resp *gilmour.Response) {
+		func(req *Request, resp *Response) {
 			time.Sleep(time.Second * 4)
-			resp.Respond(PingResponse)
+			resp.Send(PingResponse)
 		},
-		gilmour.MakeHandlerOpts().SetTimeout(3),
+		MakeHandlerOpts().SetTimeout(3),
 	)
 
-	opts := gilmour.NewPublisher().
-		SetData("send"). //Will Sleep for 5 seconds.
-		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
+	data := NewResponse().SetData("send")
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
 	})
 
-	engine.Publish(topic, opts)
+	engine.Request(topic, data, opts)
 
 	select {
 	case result := <-out_chan:
@@ -436,22 +437,19 @@ func TestHandlerException(t *testing.T) {
 	out_chan := make(chan int, 1)
 	topic := randSeq(10)
 
-	sub, _ := engine.Subscribe(
-		topic,
-		func(req *gilmour.Request, resp *gilmour.Response) {
-			// Just to induce errors, access a null pointers's method.
-			var x *HandlerOpts
-			log.Debug(x.GetGroup())
-		}, nil,
-	)
+	sub, _ := engine.ReplyTo(topic, func(req *Request, resp *Response) {
+		// Just to induce errors, access a null pointers's method.
+		var x *HandlerOpts
+		log.Debug(x.GetGroup())
+	}, nil)
 
-	opts := gilmour.NewPublisher().
-		SetData("send"). //Will Sleep for 5 seconds.
-		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {
+	data := NewResponse().SetData("send")
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
 		out_chan <- req.Code()
 	})
 
-	engine.Publish(topic, opts)
+	engine.Request(topic, data, opts)
 
 	select {
 	case result := <-out_chan:
@@ -466,34 +464,17 @@ func TestHandlerException(t *testing.T) {
 }
 
 func TestSansListener(t *testing.T) {
-	opts := gilmour.NewPublisher().SetData("ping?")
-	_, err := engine.Publish("ping-sans-listener", opts)
-	if err != nil {
+	data := NewResponse().SetData("ping?")
+	if _, err := engine.Signal("ping-sans-listener", data); err != nil {
 		t.Error(err)
 	}
 }
 
 func TestConfirmSansListener(t *testing.T) {
-	pub_opts := gilmour.NewPublisher().
-		SetData("ping?").
-		ConfirmSubscriber()
+	data := NewResponse().SetData("ping?")
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {})
 
-	_, err := engine.Publish("ping-confirm-sans-listener", pub_opts)
-	if err != nil {
-		if !strings.Contains(err.Error(), "active subscribers") {
-			t.Error(err.Error())
-		}
-	}
-}
-
-func TestHandlerConfirmSansListener(t *testing.T) {
-	pub_opts := gilmour.NewPublisher().
-		SetData("ping?").
-		ConfirmSubscriber().
-		SetHandler(func(req *gilmour.Request, resp *gilmour.Response) {})
-
-	_, err := engine.Publish("ping-confirm-sans-listener", pub_opts)
-	if err != nil {
+	if _, err := engine.Request("ping-confirm-sans-listener", data, opts); err != nil {
 		if !strings.Contains(err.Error(), "active subscribers") {
 			t.Error(err.Error())
 		}
@@ -513,7 +494,7 @@ func waitBeforeExiting(interval int) {
 
 func TestMain(m *testing.M) {
 	redis = backends.MakeRedis("127.0.0.1:6379")
-	engine = gilmour.Get(redis)
+	engine = Get(redis)
 
 	engine.Start()
 
