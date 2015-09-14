@@ -64,6 +64,7 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 	}
 
 	for _, s := range subs {
+
 		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
 			log.Info("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
 			go self.UnsubscribeReply(msg.Key, s)
@@ -83,7 +84,12 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 	opts := s.GetOpts()
 	if opts.GetGroup() != protocol.BLANK {
 		if !self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
-			log.Warn("Message cannot be processed. Unable to acquire Lock.", "Group", opts.GetGroup(), "Sender", d.GetSender())
+			log.Warn(
+				"Message cannot be processed. Unable to acquire Lock.",
+				"Topic", topic,
+				"Group", opts.GetGroup(),
+				"Sender", d.GetSender(),
+			)
 			return
 		}
 	}
@@ -137,6 +143,8 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 	})
 
 	status := <-done
+
+	log.Info("subscirber", "details", s.GetOpts())
 
 	if !s.GetOpts().IsSlot() {
 		if status == false {
@@ -355,29 +363,30 @@ func (self *Gilmour) slotDestination(topic string) string {
 
 func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (sender string, err error) {
 	sender = protocol.MakeSenderId()
-
 	msg.SetSender(sender)
 
-	if has, err := self.backend.HasActiveSubscribers(topic); err != nil {
+	//If a handler is being supplied, subscribe to a response.
+	if opts.GetHandler() == nil {
+		return sender, errors.New("Cannot use Request without a handler")
+	}
+
+	if has, err := self.backend.HasActiveSubscribers(self.requestDestination(topic)); err != nil {
 		return sender, err
 	} else if !has {
 		return sender, errors.New("No active listeners for: " + topic)
 	}
 
-	//If a handler is being supplied, subscribe to a response.
-	if opts.GetHandler() != nil {
-		respChannel := self.backend.ResponseTopic(sender)
+	respChannel := self.backend.ResponseTopic(sender)
 
-		//Wait for a responseHandler
-		rOpts := NewHandlerOpts().SetOneShot()
-		self.ReplyTo(respChannel, opts.GetHandler(), rOpts)
+	//Wait for a responseHandler
+	rOpts := NewHandlerOpts().SetOneShot().SetGroup("response")
+	self.ReplyTo(respChannel, opts.GetHandler(), rOpts)
 
-		timeout := opts.GetTimeout()
-		if timeout > 0 {
-			time.AfterFunc(time.Duration(timeout)*time.Second, func() {
-				self.sendTimeout(sender, respChannel)
-			})
-		}
+	timeout := opts.GetTimeout()
+	if timeout > 0 {
+		time.AfterFunc(time.Duration(timeout)*time.Second, func() {
+			self.sendTimeout(sender, respChannel)
+		})
 	}
 
 	return sender, self.publish(self.requestDestination(topic), msg)

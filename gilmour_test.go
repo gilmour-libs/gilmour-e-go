@@ -118,8 +118,8 @@ func TestWildcardReply(t *testing.T) {
 	}
 }
 
-func TestSubscribeSleep(t *testing.T) {
-	sub, err := engine.ReplyTo(
+func TestPublisherSleep(t *testing.T) {
+	_, err := engine.ReplyTo(
 		SleepTopic,
 		func(req *Request, resp *Response) {
 			var delay int
@@ -132,12 +132,6 @@ func TestSubscribeSleep(t *testing.T) {
 	if err != nil {
 		t.Error("Error Subscribing", SleepTopic, err.Error())
 		return
-	}
-
-	actualTimeout := sub.GetOpts().GetTimeout()
-
-	if actualTimeout != 600 {
-		t.Error("Handler should have default timeout of 600, Found", actualTimeout)
 	}
 
 	if has, _ := isReplySubscribed(SleepTopic); !has {
@@ -404,8 +398,9 @@ func TestSendAndReceive(t *testing.T) {
 func TestPublisherTimeout(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	data := NewResponse().SetData(5)
+	sleepFor := 5
 
+	data := NewResponse().SetData(sleepFor)
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
@@ -422,7 +417,7 @@ func TestPublisherTimeout(t *testing.T) {
 		if result != "Execution timed out" {
 			t.Error("Response should be 'Execution timed out' Found", result)
 		}
-	case <-time.After(time.Second * 5):
+	case <-time.After(time.Second * time.Duration(sleepFor)):
 		t.Error("Response should be", "Execution timed out", "timed out instead")
 	}
 }
@@ -438,7 +433,7 @@ func TestSubscriberTimeout(t *testing.T) {
 	out_chan := make(chan string, 1)
 	topic := "sleep_delayed"
 
-	sub, _ := engine.ReplyTo(
+	sub, err := engine.ReplyTo(
 		topic,
 		func(req *Request, resp *Response) {
 			time.Sleep(time.Second * 4)
@@ -446,6 +441,11 @@ func TestSubscriberTimeout(t *testing.T) {
 		},
 		MakeHandlerOpts().SetTimeout(3),
 	)
+
+	if err == nil {
+		t.Error("Error Subscribing", PingTopic, err.Error())
+		return
+	}
 
 	data := NewResponse().SetData("send")
 
@@ -473,11 +473,16 @@ func TestHandlerException(t *testing.T) {
 	out_chan := make(chan int, 1)
 	topic := randSeq(10)
 
-	sub, _ := engine.ReplyTo(topic, func(req *Request, resp *Response) {
+	sub, err := engine.ReplyTo(topic, func(req *Request, resp *Response) {
 		// Just to induce errors, access a null pointers's method.
 		var x *HandlerOpts
 		golog.Println(x.GetGroup())
 	}, nil)
+
+	if err == nil {
+		t.Error("Error Subscribing", PingTopic, err.Error())
+		return
+	}
 
 	data := NewResponse().SetData("send")
 

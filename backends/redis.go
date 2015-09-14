@@ -50,8 +50,8 @@ func (self *Redis) HasActiveSubscribers(topic string) (bool, error) {
 
 	data, err := redis.IntMap(conn.Do("PUBSUB", "NUMSUB", topic))
 	if err == nil {
-		_, has := data[topic]
-		return has, err
+		count, has := data[topic]
+		return has && count > 0, err
 	} else {
 		return false, err
 	}
