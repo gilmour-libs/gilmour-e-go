@@ -40,6 +40,10 @@ func (self *RequestOpts) ShouldConfirmSubscriber() bool {
 	return true
 }
 
+func (self *RequestOpts) GetTimeout() int {
+	return self.timeout
+}
+
 func (self *RequestOpts) SetTimeout(t int) *RequestOpts {
 	self.timeout = t
 	return self

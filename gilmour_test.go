@@ -2,6 +2,7 @@ package gilmour
 
 import (
 	"fmt"
+	golog "log"
 	"math/rand"
 	"os"
 	"strings"
@@ -11,7 +12,6 @@ import (
 
 	redigo "github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v0/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
 )
 
 const (
@@ -168,68 +168,113 @@ func TestUnsubscribe(t *testing.T) {
 func TestRelayFromSubscriber(t *testing.T) {
 }
 
+func TestTwiceSlot(t *testing.T) {
+	topic := randSeq(10)
+	opts := MakeHandlerOpts()
+
+	subs := []*Subscription{}
+	defer func() {
+		for _, s := range subs {
+			engine.Unsubscribe(topic, s)
+		}
+	}()
+
+	for i := 0; i < 2; i++ {
+		sub, err := engine.Slot(topic, func(_ *Request, _ *Response) {}, opts)
+		if sub != nil {
+			subs = append(subs, sub)
+		} else if err != nil {
+			t.Error("Cannot subscribe. Error", err.Error())
+		}
+	}
+}
+
+func TestTwiceSlotFail(t *testing.T) {
+	topic := randSeq(10)
+	count := 2
+	opts := MakeHandlerOpts().SetGroup("unique")
+
+	subs := []*Subscription{}
+	defer func() {
+		for _, s := range subs {
+			engine.Unsubscribe(topic, s)
+		}
+	}()
+
+	for i := 0; i < count; i++ {
+		sub, err := engine.Slot(topic, func(_ *Request, _ *Response) {}, opts)
+		if sub != nil {
+			subs = append(subs, sub)
+		} else if i == 1 {
+			if err == nil {
+				t.Error("Should now allow second Subscription citing duplication.")
+			}
+		} else if err != nil {
+			t.Error("Cannot subscribe. Error", err.Error())
+		}
+	}
+}
+
+func TestTwiceReplyToFail(t *testing.T) {
+	topic := randSeq(10)
+	count := 2
+	opts := MakeHandlerOpts() //Note, we did not pass a group.
+
+	subs := []*Subscription{}
+	defer func() {
+		for _, s := range subs {
+			engine.Unsubscribe(topic, s)
+		}
+	}()
+
+	for i := 0; i < count; i++ {
+		sub, err := engine.ReplyTo(topic, func(_ *Request, _ *Response) {}, opts)
+		if sub != nil {
+			subs = append(subs, sub)
+		} else if i == 1 {
+			if err == nil {
+				t.Error("Should now allow second Subscription citing duplication.")
+			}
+		} else if err != nil {
+			t.Error("Cannot subscribe. Error", err.Error())
+		}
+	}
+}
+
 func TestSendOnceReceiveTwice(t *testing.T) {
 	topic := randSeq(10)
 	count := 2
 
 	out := []string{}
 	subs := []*Subscription{}
-	out_chan := make(chan string, count)
-
-	// Subscribe x no. of times
-	for i := 0; i < count; i++ {
-		data := fmt.Sprintf("hello %v", i)
-		sub, _ := engine.Slot(topic,
-			func(_ *Request, _ *Response) { out_chan <- data },
-			nil)
-		subs = append(subs, sub)
-	}
-
-	//Publish a message to random topic
-	pub_opts := NewResponse().SetData("ping?")
-	engine.Signal(topic, pub_opts)
-
-	// Select Loop over channel, and timeout eventually.
-	for i := 0; i < count; i++ {
-		select {
-		case result := <-out_chan:
-			out = append(out, result)
-		case <-time.After(time.Second * 5):
-			t.Error("Response should be twice, timed out instead")
-		}
-	}
-
-	// Results should be received twice.
-	if len(out) != count {
-		t.Error("Response should be returned ", count, "items. Found", out)
-	}
-
 	// cleanup. Ubsubscribe from all subscribed channels.
-	for _, sub := range subs {
-		engine.Unsubscribe(topic, sub)
-	}
+	defer func() {
+		for _, sub := range subs {
+			engine.Unsubscribe(topic, sub)
+		}
 
-	// Confirm that the topic was Indeed unsubscribed.
-	if has, _ := isTopicSubscribed(topic); has {
-		t.Error("Topic", topic, "should have been unsubscribed")
-	}
-}
+		// Confirm that the topic was Indeed unsubscribed.
+		if has, _ := isTopicSubscribed(topic); has {
+			t.Error("Topic", topic, "should have been unsubscribed")
+		}
+	}()
 
-func TestSendOnceReceiveOnce(t *testing.T) {
-	topic := randSeq(10)
-	count := 2
-
-	out := []string{}
-	subs := []*Subscription{}
 	out_chan := make(chan string, count)
 
 	// Subscribe x no. of times
 	for i := 0; i < count; i++ {
 		data := fmt.Sprintf("hello %v", i)
-		opts := MakeHandlerOpts().SetGroup("unique")
-		sub, _ := engine.Slot(topic,
-			func(_ *Request, _ *Response) { out_chan <- data },
-			opts)
+		opts := MakeHandlerOpts().SetGroup(randSeq(10))
+
+		sub, err := engine.Slot(topic, func(_ *Request, _ *Response) {
+			out_chan <- data
+		}, opts)
+
+		if err != nil {
+			t.Error("Error Subscribing", err.Error())
+			return
+		}
+
 		subs = append(subs, sub)
 	}
 
@@ -237,34 +282,18 @@ func TestSendOnceReceiveOnce(t *testing.T) {
 	engine.Signal(topic, NewResponse().SetData("ping?"))
 
 	// Select Case, once and that should work.
-	select {
-	case result := <-out_chan:
-		out = append(out, result)
-	case <-time.After(time.Second * 2):
-		t.Error("Response should be twice, timed out instead")
-	}
-
-	//Same code, should fail the second time.
-	select {
-	case <-out_chan:
-		t.Error("Should not receive a value on second handler.")
-	case <-time.After(time.Second * 2):
-		out = append(out, "Ok")
+	for i := 0; i < count; i++ {
+		select {
+		case result := <-out_chan:
+			out = append(out, result)
+		case <-time.After(time.Second * 2):
+			t.Error("Response should be twice, timed out instead")
+		}
 	}
 
 	// Results should be received twice.
 	if len(out) != count {
 		t.Error("Response should be returned ", count, "items. Found", out)
-	}
-
-	// cleanup. Ubsubscribe from all subscribed channels.
-	for _, sub := range subs {
-		engine.Unsubscribe(topic, sub)
-	}
-
-	// Confirm that the topic was Indeed unsubscribed.
-	if has, _ := isTopicSubscribed(topic); has {
-		t.Error("Topic", topic, "should have been unsubscribed")
 	}
 }
 
@@ -278,6 +307,7 @@ func TestHealthResponse(t *testing.T) {
 		expected := []string{PingTopic, SleepTopic}
 
 		req.Data(&x)
+
 		skew := compare(expected, x)
 
 		if len(skew) == 0 {
@@ -380,10 +410,10 @@ func TestPublisherTimeout(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "Execution timed out" {
-			t.Error("Response should be", PingResponse, "Found", result)
+			t.Error("Response should be 'Execution timed out' Found", result)
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Response should be", PingResponse, "timed out instead")
+		t.Error("Response should be", "Execution timed out", "timed out instead")
 	}
 }
 
@@ -436,7 +466,7 @@ func TestHandlerException(t *testing.T) {
 	sub, _ := engine.ReplyTo(topic, func(req *Request, resp *Response) {
 		// Just to induce errors, access a null pointers's method.
 		var x *HandlerOpts
-		log.Debug(x.GetGroup())
+		golog.Println(x.GetGroup())
 	}, nil)
 
 	data := NewResponse().SetData("send")
@@ -493,8 +523,6 @@ func TestMain(m *testing.M) {
 	engine = Get(redis)
 
 	engine.Start()
-
-	logger.Logger.Info("Starting Engine")
 
 	status := m.Run()
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,10 +78,11 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 	}
 
 	opts := s.GetOpts()
-	if opts.GetGroup() != protocol.BLANK &&
-		!self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
-		log.Warn("Message cannot be processed. Unable to acquire Lock.", "Group", opts.GetGroup(), "Sender", d.GetSender())
-		return
+	if opts.GetGroup() != protocol.BLANK {
+		if !self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
+			log.Warn("Message cannot be processed. Unable to acquire Lock.", "Group", opts.GetGroup(), "Sender", d.GetSender())
+			return
+		}
 	}
 
 	go self.handleRequest(s, topic, d)
@@ -234,7 +236,24 @@ func isDuplicateExclusive(topic, group string) bool {
 	return false
 }
 
+func (self *Gilmour) isExclusiveDuplicate(topic, group string) bool {
+	subs, ok := self.getSubscribers(topic)
+	if ok {
+		for _, s := range subs {
+			if s.GetOpts().GetGroup() == group {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (self *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+	if strings.Contains(topic, "*") {
+		return nil, errors.New("ReplyTo cannot have wildcard topics")
+	}
+
 	if opts == nil {
 		opts = &HandlerOpts{}
 	}
@@ -243,14 +262,7 @@ func (self *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subsc
 		opts.SetGroup("_default")
 	}
 
-	if _, ok := self.getSubscribers(topic); !ok {
-		err := self.backend.Subscribe(topic, opts.GetGroup())
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return self.addSubscriber(topic, h, opts), nil
+	return self.subscribe(topic, h, opts)
 }
 
 func (self *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
@@ -258,15 +270,22 @@ func (self *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscrip
 		opts = &HandlerOpts{}
 	}
 
-	if _, ok := self.getSubscribers(topic); !ok {
-		if err := self.backend.Subscribe(topic, opts.GetGroup()); err != nil {
-			return nil, err
-		}
+	opts.SetSlot()
+	return self.subscribe(topic, h, opts)
+}
+
+func (self *Gilmour) subscribe(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+	group := opts.GetGroup()
+
+	if group != "" && self.isExclusiveDuplicate(topic, group) {
+		return nil, errors.New(fmt.Sprintf("Duplicate reply handler for %v:%v", topic, group))
 	}
 
-	opts.SetSlot()
-
-	return self.addSubscriber(topic, h, opts), nil
+	if err := self.backend.Subscribe(topic, opts.GetGroup()); err != nil {
+		return nil, err
+	} else {
+		return self.addSubscriber(topic, h, opts), nil
+	}
 }
 
 func (self *Gilmour) Unsubscribe(topic string, s *Subscription) {
