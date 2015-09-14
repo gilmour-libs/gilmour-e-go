@@ -144,8 +144,6 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 
 	status := <-done
 
-	log.Info("subscirber", "details", s.GetOpts())
-
 	if !s.GetOpts().IsSlot() {
 		if status == false {
 			self.sendTimeout(senderId, res.GetSender())
