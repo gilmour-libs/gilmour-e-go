@@ -458,7 +458,7 @@ func TestSubscriberTimeout(t *testing.T) {
 		MakeHandlerOpts().SetTimeout(3),
 	)
 
-	if err == nil {
+	if err != nil {
 		t.Error("Error Subscribing", PingTopic, err.Error())
 		return
 	}
@@ -495,7 +495,7 @@ func TestHandlerException(t *testing.T) {
 		golog.Println(x.GetGroup())
 	}, nil)
 
-	if err == nil {
+	if err != nil {
 		t.Error("Error Subscribing", PingTopic, err.Error())
 		return
 	}
@@ -532,7 +532,7 @@ func TestConfirmSansListener(t *testing.T) {
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {})
 
 	if _, err := engine.Request("ping-confirm-sans-listener", data, opts); err != nil {
-		if !strings.Contains(err.Error(), "active subscribers") {
+		if !strings.Contains(err.Error(), "active listeners") {
 			t.Error(err.Error())
 		}
 	}
