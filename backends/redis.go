@@ -116,12 +116,6 @@ func (self *Redis) Unsubscribe(topic string) (err error) {
 }
 
 func (self *Redis) Subscribe(topic, group string) (err error) {
-	if group != protocol.BLANK &&
-		strings.HasSuffix(topic, "*") {
-		err := errors.New("Wildcards cannot have Groups")
-		return err
-	}
-
 	if strings.HasSuffix(topic, "*") {
 		err = self.pubsub.PSubscribe(topic)
 	} else {
