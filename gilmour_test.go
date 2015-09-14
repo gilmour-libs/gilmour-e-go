@@ -85,12 +85,17 @@ func TestHealthSubscribe(t *testing.T) {
 func TestSubscribePing(t *testing.T) {
 	timeout := 3
 	handler_opts := MakeHandlerOpts().SetTimeout(timeout)
-	sub, _ := engine.ReplyTo(PingTopic, func(req *Request, resp *Response) {
+	sub, err := engine.ReplyTo(PingTopic, func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
 		req.Logger.Debug(PingTopic, "Received", x)
 		resp.Send(PingResponse)
 	}, handler_opts)
+
+	if err != nil {
+		t.Error("Error Subscribing", PingTopic, err.Error())
+		return
+	}
 
 	actualTimeout := sub.GetOpts().GetTimeout()
 
@@ -103,13 +108,20 @@ func TestSubscribePing(t *testing.T) {
 	}
 }
 
-func TestWildcardGroup(t *testing.T) {
+func TestWildcardSlot(t *testing.T) {
 	opts := MakeHandlerOpts().SetGroup("wildcard_group")
 	topic := fmt.Sprintf("%v*", PingTopic)
 	_, err := engine.Slot(topic, func(req *Request, resp *Response) {}, opts)
+	if err != nil {
+		t.Error("Error Subscribing", PingTopic, err.Error())
+	}
+}
 
-	if err == nil || !strings.Contains(err.Error(), "cannot have") {
-		t.Error("Wildcars cannot belong to a Group")
+func TestWildcardReply(t *testing.T) {
+	topic := fmt.Sprintf("%v*", PingTopic)
+	_, err := engine.ReplyTo(topic, func(req *Request, resp *Response) {}, nil)
+	if err == nil {
+		t.Error("ReplyTo cannot have wildcard topics.")
 	}
 }
 
