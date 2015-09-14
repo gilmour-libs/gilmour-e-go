@@ -18,10 +18,6 @@ type Subscription struct {
 }
 
 func (self *Subscription) GetOpts() *HandlerOpts {
-	if self.handlerOpts == nil {
-		self.handlerOpts = MakeHandlerOpts()
-	}
-
 	return self.handlerOpts
 }
 

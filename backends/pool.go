@@ -1,12 +1,16 @@
 package backends
 
 import (
-	"github.com/garyburd/redigo/redis"
+	"log"
 	"sync"
 	"time"
+
+	"github.com/garyburd/redigo/redis"
 )
 
 func newPool(server string) *redis.Pool {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	return &redis.Pool{
 		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,

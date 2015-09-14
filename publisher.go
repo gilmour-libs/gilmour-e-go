@@ -1,81 +1,63 @@
 package gilmour
 
-import (
-	"encoding/json"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
-)
+// Common interface for both Request/Response and Signal/Slot pattern.
+type PublishOpts interface {
+	ShouldConfirmSubscriber() bool
+	GetTimeout() int
+	GetHandler() Handler
+}
 
-type Publisher struct {
-	data    interface{}
-	code    int
-	handler Handler
-	timeout int
+//Structure for Signal Slot Handler.
+type SignalOpts struct{}
+
+//Signal Slots do not care about atleast-once delivery.
+func (self *SignalOpts) ShouldConfirmSubscriber() bool {
+	return false
+}
+
+//Signal Slots do not care about delivery, hence no timeout.
+func (self *SignalOpts) GetTimeout() int {
+	return 0
+}
+
+//Signal Slot cannot have a response handler either.
+func (self *SignalOpts) GetHandler() Handler {
+	return nil
+}
+
+// Structure to handle Reuquest Response.
+// This one has a few extra methods over and above SignalHadler.
+// Namely, ability to SetTimeout, SetHanler and ConfirmSubscriber().
+type RequestOpts struct {
 	confirm bool
+	timeout int
+	handler Handler
+	SignalOpts
 }
 
-func (self *Publisher) ShouldConfirmSubscriber() bool {
-	return self.confirm
+//Override the ShouldConfirmSubscriber to force it to be true.
+func (self *RequestOpts) ShouldConfirmSubscriber() bool {
+	return true
 }
 
-func (self *Publisher) ConfirmSubscriber() *Publisher {
-	self.confirm = true
-	return self
-}
-
-func (self *Publisher) GetTimeout() int {
+func (self *RequestOpts) GetTimeout() int {
 	return self.timeout
 }
 
-func (self *Publisher) SetTimeout(t int) *Publisher {
+func (self *RequestOpts) SetTimeout(t int) *RequestOpts {
 	self.timeout = t
 	return self
 }
 
-func (self *Publisher) SetCode(code int) *Publisher {
-	self.code = code
-	return self
-}
-
-func (self *Publisher) GetCode() int {
-	if self.code == 0 {
-		self.code = 200
-	}
-
-	return self.code
-}
-
-func (self *Publisher) SetHandler(h Handler) *Publisher {
+func (self *RequestOpts) SetHandler(h Handler) *RequestOpts {
 	self.handler = h
 	return self
 }
 
-func (self *Publisher) GetHandler() Handler {
+func (self *RequestOpts) GetHandler() Handler {
 	return self.handler
 }
 
-func (self *Publisher) GetData() interface{} {
-	return self.data
-}
-
-func (self *Publisher) GetJSONData() (string, error) {
-	data, err := json.Marshal(self.data)
-	if err != nil {
-		return "", nil
-	} else {
-		return string(data), err
-	}
-}
-
-func (self *Publisher) SetData(data interface{}) *Publisher {
-	self.data = data
-	return self
-}
-
-func (self *Publisher) ToSentRequest(sender string) *protocol.SentRequest {
-	req := &protocol.SentRequest{}
-	return req.SetSender(sender).SetCode(self.GetCode()).Send(self.GetData())
-}
-
-func NewPublisher() *Publisher {
-	return &Publisher{}
+func NewRequestOpts() *RequestOpts {
+	return &RequestOpts{}
 }
