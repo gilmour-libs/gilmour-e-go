@@ -362,8 +362,16 @@ func (self *Gilmour) slotDestination(topic string) string {
 }
 
 func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (sender string, err error) {
+	if msg == nil {
+		msg = NewResponse()
+	}
+
 	sender = protocol.MakeSenderId()
 	msg.SetSender(sender)
+
+	if opts == nil {
+		opts = NewRequestOpts()
+	}
 
 	//If a handler is being supplied, subscribe to a response.
 	if opts.GetHandler() == nil {
@@ -393,6 +401,10 @@ func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (se
 }
 
 func (self *Gilmour) Signal(topic string, msg *Response) (sender string, err error) {
+	if msg == nil {
+		msg = NewResponse()
+	}
+
 	sender = protocol.MakeSenderId()
 	msg.SetSender(sender)
 	return sender, self.publish(self.slotDestination(topic), msg)

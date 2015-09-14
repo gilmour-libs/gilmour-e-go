@@ -422,10 +422,26 @@ func TestPublisherTimeout(t *testing.T) {
 	}
 }
 
-func TestNoPublisher(t *testing.T) {
-	_, err := engine.Signal(PingTopic, nil)
-	if err == nil || !strings.Contains(err.Error(), "provide publisher") {
-		t.Error("Must provide publisher to be published")
+func TestSansListenerSlot(t *testing.T) {
+	_, err := engine.Signal("humpty-dumpty", nil)
+	if err != nil {
+		t.Error("Slots do not need recivers")
+	}
+}
+
+func TestSansHandlerRequest(t *testing.T) {
+	_, err := engine.Request("humpty-dumpty", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "without a handler") {
+		t.Error(err.Error())
+	}
+}
+
+func TestSansListenerRequest(t *testing.T) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {})
+
+	_, err := engine.Request("humpty-dumpty", nil, opts)
+	if err == nil || !strings.Contains(err.Error(), "listeners") {
+		t.Error(err.Error())
 	}
 }
 
