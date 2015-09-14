@@ -1,5 +1,7 @@
 package gilmour
 
+import "sync"
+
 const TIMEOUT = 600
 
 type HandlerOpts struct {
@@ -7,12 +9,18 @@ type HandlerOpts struct {
 	timeout int
 	oneShot bool
 	isSlot  bool
+	sync.Mutex
 }
 
 func (self *HandlerOpts) GetTimeout() int {
-	if self.timeout == 0 {
+	//Parallel Goroutines will othrwise run into race condition.
+	self.Lock()
+	defer self.Unlock()
+
+	if self.timeout != 0 {
 		self.timeout = TIMEOUT
 	}
+
 	return self.timeout
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
@@ -17,31 +18,29 @@ const defaultIdentKey = "gilmour.known_host.health"
 const defaultErrorBuffer = 9999
 
 func MakeRedis(host string) *Redis {
-	engine := Redis{}
-	engine.pool = GetPool(host)
-
-	conn := engine.GetConn()
-	defer conn.Close()
-	_, err := conn.Do("PING")
-	if err != nil {
-		panic(err)
+	redisPool := GetPool(host)
+	return &Redis{
+		redisPool:  redisPool,
+		pubsubConn: redis.PubSubConn{Conn: redisPool.Get()},
 	}
-
-	engine.pubsub = redis.PubSubConn{Conn: engine.pool.Get()}
-	return &engine
 }
 
 type Redis struct {
-	pool   *redis.Pool
-	pubsub redis.PubSubConn
+	redisPool  *redis.Pool
+	pubsubConn redis.PubSubConn
+	sync.Mutex
 }
 
 func (self *Redis) getErrorTopic() string {
 	return defaultErrorTopic
 }
 
+func (self *Redis) getPubSubConn() redis.PubSubConn {
+	return self.pubsubConn
+}
+
 func (self *Redis) GetConn() redis.Conn {
-	return self.pool.Get()
+	return self.redisPool.Get()
 }
 
 func (self *Redis) HasActiveSubscribers(topic string) (bool, error) {
@@ -106,20 +105,26 @@ func (self *Redis) ReportError(method string, message *protocol.Error) (err erro
 }
 
 func (self *Redis) Unsubscribe(topic string) (err error) {
+	self.Lock()
+	defer self.Unlock()
+
 	if strings.HasSuffix(topic, "*") {
-		err = self.pubsub.PUnsubscribe(topic)
+		err = self.getPubSubConn().PUnsubscribe(topic)
 	} else {
-		err = self.pubsub.Unsubscribe(topic)
+		err = self.getPubSubConn().Unsubscribe(topic)
 	}
 
 	return
 }
 
 func (self *Redis) Subscribe(topic, group string) (err error) {
+	self.Lock()
+	defer self.Unlock()
+
 	if strings.HasSuffix(topic, "*") {
-		err = self.pubsub.PSubscribe(topic)
+		err = self.getPubSubConn().PSubscribe(topic)
 	} else {
-		err = self.pubsub.Subscribe(topic)
+		err = self.getPubSubConn().Subscribe(topic)
 	}
 
 	return
@@ -190,7 +195,7 @@ func (self *Redis) Stop() {
 func (self *Redis) setupListeners(sink chan *protocol.Message) {
 	go func() {
 		for {
-			switch v := self.pubsub.Receive().(type) {
+			switch v := self.getPubSubConn().Receive().(type) {
 			case redis.PMessage:
 				msg := &protocol.Message{"pmessage", v.Channel, v.Data, v.Pattern}
 				sink <- msg

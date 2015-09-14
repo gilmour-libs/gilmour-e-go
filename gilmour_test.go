@@ -21,7 +21,8 @@ const (
 )
 
 var engine *Gilmour
-var redis *backends.Redis
+
+var redis = backends.MakeRedis("127.0.0.1:6379")
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
@@ -54,10 +55,12 @@ func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
 
 	idents, err2 := redigo.Strings(conn.Do("PUBSUB", "CHANNELS"))
 	if err2 != nil {
+		golog.Println(err2.Error())
 		return false, err2
 	}
 
 	for _, t := range idents {
+		golog.Println(t)
 		if t == topic {
 			return true, nil
 		}
@@ -455,7 +458,7 @@ func TestSubscriberTimeout(t *testing.T) {
 			time.Sleep(time.Second * 4)
 			resp.Send(PingResponse)
 		},
-		MakeHandlerOpts().SetTimeout(3),
+		MakeHandlerOpts().SetTimeout(2),
 	)
 
 	if err != nil {
@@ -550,7 +553,6 @@ func waitBeforeExiting(interval int) {
 }
 
 func TestMain(m *testing.M) {
-	redis = backends.MakeRedis("127.0.0.1:6379")
 	engine = Get(redis)
 
 	engine.Start()
