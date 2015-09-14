@@ -50,7 +50,7 @@ func (self *Redis) HasActiveSubscribers(topic string) (bool, error) {
 	defer conn.Close()
 
 	data, err := redis.IntMap(conn.Do("PUBSUB", "NUMSUB", topic))
-	if err != nil {
+	if err == nil {
 		_, has := data[topic]
 		return has, err
 	} else {
