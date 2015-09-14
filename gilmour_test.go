@@ -273,8 +273,7 @@ func TestHealthResponse(t *testing.T) {
 
 	data := NewResponse().SetData("is-healthy?")
 
-	opts := NewRequestOpts().
-		SetHandler(func(req *Request, resp *Response) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
 		x := []string{}
 		expected := []string{PingTopic, SleepTopic}
 
@@ -341,8 +340,7 @@ func TestSendAndReceive(t *testing.T) {
 
 	data := NewResponse().SetData("ping?")
 
-	opts := NewRequestOpts().
-		SetHandler(func(req *Request, resp *Response) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
@@ -368,13 +366,11 @@ func TestPublisherTimeout(t *testing.T) {
 
 	data := NewResponse().SetData(5)
 
-	opts := NewRequestOpts().
-		SetTimeout(2).
-		SetHandler(func(req *Request, resp *Response) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
-	})
+	}).SetTimeout(2)
 
 	_, err := engine.Request(SleepTopic, data, opts)
 	if err != nil {
