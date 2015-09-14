@@ -41,8 +41,11 @@ func (self *Gilmour) Stop() {
 	defer self.unregisterIdent()
 	defer self.backend.Stop()
 
-	for topic, _ := range self.getAllSubscribers() {
-		self.UnsubscribeAll(topic)
+	for topic, handlers := range self.getAllSubscribers() {
+		for _, h := range handlers {
+			self.UnsubscribeSlot(topic, h)
+			self.UnsubscribeReply(topic, h)
+		}
 	}
 }
 
@@ -63,7 +66,7 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 	for _, s := range subs {
 		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
 			log.Info("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
-			go self.Unsubscribe(msg.Key, s)
+			go self.UnsubscribeReply(msg.Key, s)
 		}
 
 		self.executeSubscriber(s, msg.Topic, msg.Data)
@@ -262,7 +265,7 @@ func (self *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subsc
 		opts.SetGroup("_default")
 	}
 
-	return self.subscribe(topic, h, opts)
+	return self.subscribe(self.requestDestination(topic), h, opts)
 }
 
 func (self *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
@@ -271,7 +274,7 @@ func (self *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscrip
 	}
 
 	opts.SetSlot()
-	return self.subscribe(topic, h, opts)
+	return self.subscribe(self.slotDestination(topic), h, opts)
 }
 
 func (self *Gilmour) subscribe(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
@@ -288,7 +291,15 @@ func (self *Gilmour) subscribe(topic string, h Handler, opts *HandlerOpts) (*Sub
 	}
 }
 
-func (self *Gilmour) Unsubscribe(topic string, s *Subscription) {
+func (self *Gilmour) UnsubscribeSlot(topic string, s *Subscription) {
+	self.unsubscribe(self.slotDestination(topic), s)
+}
+
+func (self *Gilmour) UnsubscribeReply(topic string, s *Subscription) {
+	self.unsubscribe(self.requestDestination(topic), s)
+}
+
+func (self *Gilmour) unsubscribe(topic string, s *Subscription) {
 	self.removeSubscriber(topic, s)
 
 	if _, ok := self.getSubscribers(topic); !ok {
@@ -296,14 +307,6 @@ func (self *Gilmour) Unsubscribe(topic string, s *Subscription) {
 		if err != nil {
 			panic(err)
 		}
-	}
-}
-
-func (self *Gilmour) UnsubscribeAll(topic string) {
-	self.removeSubscribers(topic)
-	err := self.backend.Unsubscribe(topic)
-	if err != nil {
-		panic(err)
 	}
 }
 
@@ -334,6 +337,22 @@ func (self *Gilmour) ReportError(e *protocol.Error) {
 	}
 }
 
+func (self *Gilmour) requestDestination(topic string) string {
+	if strings.HasPrefix(topic, "gilmour.") {
+		return topic
+	} else {
+		return fmt.Sprintf("gilmour.request.%v", topic)
+	}
+}
+
+func (self *Gilmour) slotDestination(topic string) string {
+	if strings.HasPrefix(topic, "gilmour.") {
+		return topic
+	} else {
+		return fmt.Sprintf("gilmour.slot.%v", topic)
+	}
+}
+
 func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (sender string, err error) {
 	sender = protocol.MakeSenderId()
 
@@ -361,13 +380,13 @@ func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (se
 		}
 	}
 
-	return sender, self.publish(topic, msg)
+	return sender, self.publish(self.requestDestination(topic), msg)
 }
 
 func (self *Gilmour) Signal(topic string, msg *Response) (sender string, err error) {
 	sender = protocol.MakeSenderId()
 	msg.SetSender(sender)
-	return sender, self.publish(topic, msg)
+	return sender, self.publish(self.slotDestination(topic), msg)
 }
 
 // Internal method to publish a message.

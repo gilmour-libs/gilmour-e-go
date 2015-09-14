@@ -53,31 +53,43 @@ func compare(X, Y []string) []string {
 	return ret
 }
 
-func isTopicSubscribed(topic string) (has bool, err error) {
+func isReplySubscribed(topic string) (bool, error) {
+	return isTopicSubscribed(topic, false)
+}
+
+func isSlotSubscribed(topic string) (bool, error) {
+	return isTopicSubscribed(topic, true)
+}
+
+func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
+	if is_slot {
+		topic = engine.slotDestination(topic)
+	} else {
+		topic = engine.requestDestination(topic)
+	}
+
 	conn := redis.GetConn()
 	defer conn.Close()
 
 	idents, err2 := redigo.Strings(conn.Do("PUBSUB", "CHANNELS"))
 	if err2 != nil {
-		err = err2
-		return
+		return false, err2
 	}
 
 	for _, t := range idents {
 		if t == topic {
-			has = true
-			break
+			return true, nil
 		}
 	}
 
-	return
+	return false, nil
 }
 
 func TestHealthSubscribe(t *testing.T) {
 	engine.SetHealthCheckEnabled()
 
 	topic := redis.HealthTopic(engine.GetIdent())
-	if has, _ := isTopicSubscribed(topic); !has {
+	if has, _ := isReplySubscribed(topic); !has {
 		t.Error(topic, "should have been subscribed")
 	}
 }
@@ -103,7 +115,7 @@ func TestSubscribePing(t *testing.T) {
 		t.Error("Handler should have timeout of", timeout, "seconds. Found", actualTimeout)
 	}
 
-	if has, _ := isTopicSubscribed(PingTopic); !has {
+	if has, _ := isReplySubscribed(PingTopic); !has {
 		t.Error("Topic", PingTopic, "should have been subscribed")
 	}
 }
@@ -126,7 +138,7 @@ func TestWildcardReply(t *testing.T) {
 }
 
 func TestSubscribeSleep(t *testing.T) {
-	sub, _ := engine.ReplyTo(
+	sub, err := engine.ReplyTo(
 		SleepTopic,
 		func(req *Request, resp *Response) {
 			var delay int
@@ -136,13 +148,18 @@ func TestSubscribeSleep(t *testing.T) {
 		}, nil,
 	)
 
+	if err != nil {
+		t.Error("Error Subscribing", SleepTopic, err.Error())
+		return
+	}
+
 	actualTimeout := sub.GetOpts().GetTimeout()
 
 	if actualTimeout != 600 {
 		t.Error("Handler should have default timeout of 600, Found", actualTimeout)
 	}
 
-	if has, _ := isTopicSubscribed(SleepTopic); !has {
+	if has, _ := isReplySubscribed(SleepTopic); !has {
 		t.Error("Topic", SleepTopic, "should have been subscribed")
 	}
 }
@@ -164,15 +181,19 @@ func TestHealthGetAll(t *testing.T) {
 
 func TestUnsubscribe(t *testing.T) {
 	topic := randSeq(10)
-	sub, _ := engine.Slot(topic, func(req *Request, resp *Response) {}, nil)
+	sub, err := engine.Slot(topic, func(req *Request, resp *Response) {}, nil)
+	if err != nil {
+		t.Error("Error Subscribing", topic, err.Error())
+		return
+	}
 
-	if has, _ := isTopicSubscribed(topic); !has {
+	if has, _ := isSlotSubscribed(topic); !has {
 		t.Error(topic, "should have been subscribed")
 	}
 
-	engine.Unsubscribe(topic, sub)
+	engine.UnsubscribeSlot(topic, sub)
 
-	if has, _ := isTopicSubscribed(topic); has {
+	if has, _ := isSlotSubscribed(topic); has {
 		t.Error("Topic", topic, "should have been unsubscribed")
 	}
 }
@@ -187,7 +208,7 @@ func TestTwiceSlot(t *testing.T) {
 	subs := []*Subscription{}
 	defer func() {
 		for _, s := range subs {
-			engine.Unsubscribe(topic, s)
+			engine.UnsubscribeSlot(topic, s)
 		}
 	}()
 
@@ -209,7 +230,7 @@ func TestTwiceSlotFail(t *testing.T) {
 	subs := []*Subscription{}
 	defer func() {
 		for _, s := range subs {
-			engine.Unsubscribe(topic, s)
+			engine.UnsubscribeSlot(topic, s)
 		}
 	}()
 
@@ -235,7 +256,7 @@ func TestTwiceReplyToFail(t *testing.T) {
 	subs := []*Subscription{}
 	defer func() {
 		for _, s := range subs {
-			engine.Unsubscribe(topic, s)
+			engine.UnsubscribeReply(topic, s)
 		}
 	}()
 
@@ -259,14 +280,14 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 
 	out := []string{}
 	subs := []*Subscription{}
-	// cleanup. Ubsubscribe from all subscribed channels.
+	// cleanup. Unsubscribe from all subscribed channels.
 	defer func() {
 		for _, sub := range subs {
-			engine.Unsubscribe(topic, sub)
+			engine.UnsubscribeSlot(topic, sub)
 		}
 
 		// Confirm that the topic was Indeed unsubscribed.
-		if has, _ := isTopicSubscribed(topic); has {
+		if has, _ := isSlotSubscribed(topic); has {
 			t.Error("Topic", topic, "should have been unsubscribed")
 		}
 	}()
@@ -368,11 +389,11 @@ func TestReceiveOnWildcard(t *testing.T) {
 		t.Error("Response should be received, timed out instead")
 	}
 
-	// cleanup. Ubsubscribe from all subscribed channels.
-	engine.Unsubscribe(topic, sub)
+	// cleanup. Unsubscribe from all subscribed channels.
+	engine.UnsubscribeSlot(topic, sub)
 
 	// Confirm that the topic was Indeed unsubscribed.
-	if has, _ := isTopicSubscribed(topic); has {
+	if has, _ := isSlotSubscribed(topic); has {
 		t.Error("Topic", topic, "should have been unsubscribed")
 	}
 }
@@ -468,7 +489,7 @@ func TestSubscriberTimeout(t *testing.T) {
 		t.Error("Response should be", PingResponse, "timed out instead")
 	}
 
-	engine.Unsubscribe(topic, sub)
+	engine.UnsubscribeReply(topic, sub)
 }
 
 func TestHandlerException(t *testing.T) {
@@ -498,7 +519,7 @@ func TestHandlerException(t *testing.T) {
 		t.Error("Response should have raised Exception, timed out instead")
 	}
 
-	engine.Unsubscribe(topic, sub)
+	engine.UnsubscribeReply(topic, sub)
 }
 
 func TestSansListener(t *testing.T) {
