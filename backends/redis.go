@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/garyburd/redigo/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 )
 
 const defaultErrorQueue = "gilmour.errorqueue"

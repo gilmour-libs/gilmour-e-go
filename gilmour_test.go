@@ -11,7 +11,7 @@ import (
 	"time"
 
 	redigo "github.com/garyburd/redigo/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/backends"
 )
 
 const (

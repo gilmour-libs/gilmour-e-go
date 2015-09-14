@@ -1,7 +1,7 @@
 package gilmour
 
 import (
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 	log15 "gopkg.in/inconshreveable/log15.v2"
 )
 
@@ -36,6 +36,5 @@ func (self *Request) StringData() []byte {
 }
 
 func NewRequest(t string, gd protocol.RecvRequest) *Request {
-	log := log.New("topic", t, "sender", gd.GetSender())
 	return &Request{t, gd, log}
 }

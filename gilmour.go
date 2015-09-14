@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/logger"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/logger"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 )
 
 var log = logger.Logger

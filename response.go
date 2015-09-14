@@ -3,7 +3,7 @@ package gilmour
 import (
 	"encoding/json"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v0/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 )
 
 type Response struct {
