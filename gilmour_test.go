@@ -479,7 +479,7 @@ func TestSubscriberTimeout(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "Execution timed out" {
-			t.Error("Response should be", PingResponse, "Found", result)
+			t.Error("Response should be Execution timed out. Found", result)
 		}
 	case <-time.After(time.Second * 5):
 		t.Error("Response should be", PingResponse, "timed out instead")
