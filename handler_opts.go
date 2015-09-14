@@ -17,7 +17,7 @@ func (self *HandlerOpts) GetTimeout() int {
 	self.Lock()
 	defer self.Unlock()
 
-	if self.timeout != 0 {
+	if self.timeout == 0 {
 		self.timeout = TIMEOUT
 	}
 
