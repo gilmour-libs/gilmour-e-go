@@ -2,6 +2,7 @@ package gilmour
 
 import (
 	"encoding/json"
+	"sync"
 
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 )
@@ -10,6 +11,7 @@ type Response struct {
 	data   interface{} `json:"data"`
 	code   int         `json:"code"`
 	sender string      `json:"sender"`
+	sync.Mutex
 }
 
 func (self *Response) GetData() interface{} {
@@ -21,6 +23,9 @@ func (self *Response) Send(data interface{}) {
 }
 
 func (self *Response) SetData(data interface{}) *Response {
+	self.Lock()
+	defer self.Unlock()
+
 	if self.data != nil {
 		panic("Cannot rewrite data for response.")
 	}
