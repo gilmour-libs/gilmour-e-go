@@ -2,7 +2,7 @@ package gilmour
 
 import (
 	"fmt"
-	golog "log"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -12,6 +12,7 @@ import (
 
 	redigo "github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/ui"
 )
 
 const (
@@ -55,12 +56,12 @@ func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
 
 	idents, err2 := redigo.Strings(conn.Do("PUBSUB", "CHANNELS"))
 	if err2 != nil {
-		golog.Println(err2.Error())
+		log.Println(err2.Error())
 		return false, err2
 	}
 
 	for _, t := range idents {
-		golog.Println(t)
+		log.Println(t)
 		if t == topic {
 			return true, nil
 		}
@@ -84,8 +85,8 @@ func TestSubscribePing(t *testing.T) {
 	sub, err := engine.ReplyTo(PingTopic, func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
-		req.Logger.Debug(PingTopic, "Received", x)
-		req.Logger.Debug(PingTopic, "Sending", PingResponse)
+		ui.Message("Topic %v Received %v", PingTopic, x)
+		ui.Message("Topic %v Sending %v", PingTopic, PingResponse)
 		resp.Send(PingResponse)
 	}, handler_opts)
 
@@ -536,7 +537,7 @@ func TestHandlerException(t *testing.T) {
 	sub, err := engine.ReplyTo(topic, func(req *Request, resp *Message) {
 		// Just to induce errors, access a null pointers's method.
 		var x *HandlerOpts
-		golog.Println(x.GetGroup())
+		log.Println(x.GetGroup())
 	}, nil)
 
 	if err != nil {
@@ -594,6 +595,8 @@ func waitBeforeExiting(interval int) {
 }
 
 func TestMain(m *testing.M) {
+	ui.SetLevel(ui.Levels.Message)
+
 	engine = Get(redis)
 
 	engine.Start()
