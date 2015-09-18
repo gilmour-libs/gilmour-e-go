@@ -47,7 +47,7 @@ func Message(format string, a ...interface{}) {
 
 //30
 func Warn(format string, a ...interface{}) {
-	if logLevel > Levels.Message {
+	if logLevel > Levels.Warn {
 		return
 	}
 
