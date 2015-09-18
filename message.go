@@ -7,52 +7,52 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 )
 
-type Response struct {
+type Message struct {
 	data   interface{} `json:"data"`
 	code   int         `json:"code"`
 	sender string      `json:"sender"`
 	sync.Mutex
 }
 
-func (self *Response) GetData() interface{} {
+func (self *Message) GetData() interface{} {
 	return self.data
 }
 
-func (self *Response) Send(data interface{}) {
+func (self *Message) Send(data interface{}) {
 	self.SetData(data)
 }
 
-func (self *Response) SetData(data interface{}) *Response {
+func (self *Message) SetData(data interface{}) *Message {
 	self.Lock()
 	defer self.Unlock()
 
 	if self.data != nil {
-		panic("Cannot rewrite data for response.")
+		panic("Cannot rewrite data for Message.")
 	}
 
 	self.data = data
 	return self
 }
 
-func (self *Response) GetCode() int {
+func (self *Message) GetCode() int {
 	return self.code
 }
 
-func (self *Response) SetCode(code int) *Response {
+func (self *Message) SetCode(code int) *Message {
 	self.code = code
 	return self
 }
 
-func (self *Response) GetSender() string {
+func (self *Message) GetSender() string {
 	return self.sender
 }
 
-func (self *Response) SetSender(sender string) *Response {
+func (self *Message) SetSender(sender string) *Message {
 	self.sender = sender
 	return self
 }
 
-func (self *Response) Marshal() ([]byte, error) {
+func (self *Message) Marshal() ([]byte, error) {
 	return json.Marshal(struct {
 		Data   interface{} `json:"data"`
 		Code   int         `json:"code"`
@@ -60,8 +60,8 @@ func (self *Response) Marshal() ([]byte, error) {
 	}{self.data, self.code, self.sender})
 }
 
-func NewResponse() *Response {
-	x := &Response{}
+func NewMessage() *Message {
+	x := &Message{}
 	x.SetSender(protocol.MakeSenderId())
 	return x
 }

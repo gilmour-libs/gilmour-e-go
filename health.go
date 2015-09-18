@@ -10,7 +10,7 @@ func subscribeHealth(self *Gilmour) {
 
 	handlerOpts := NewHandlerOpts().SetGroup("exclusive")
 
-	self.ReplyTo(health_topic, func(r *Request, w *Response) {
+	self.ReplyTo(health_topic, func(r *Request, w *Message) {
 		topics := []string{}
 
 		resp_topic := self.backend.ResponseTopic("")
