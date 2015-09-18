@@ -8,11 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v1/logger"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/ui"
 )
-
-var log = logger.Logger
 
 func Get(backend Backend) *Gilmour {
 	x := Gilmour{}
@@ -59,14 +57,14 @@ func (self *Gilmour) keepListening(sink <-chan *protocol.Message) {
 func (self *Gilmour) processMessage(msg *protocol.Message) {
 	subs, ok := self.getSubscribers(msg.Key)
 	if !ok || len(subs) == 0 {
-		log.Warn("Message cannot be processed. No subs found.", "key", msg.Key)
+		ui.Warn("Message cannot be processed. No subs found for key %v", msg.Key)
 		return
 	}
 
 	for _, s := range subs {
 
 		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
-			log.Info("Unsubscribing one shot response channel", "key", msg.Key, "topic", msg.Topic)
+			ui.Message("Unsubscribing one shot response topic %v", msg.Topic)
 			go self.UnsubscribeReply(msg.Key, s)
 		}
 
@@ -77,18 +75,16 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data interface{}) {
 	d, err := protocol.ParseResponse(data)
 	if err != nil {
-		log.Error(err.Error())
+		ui.Alert(err.Error())
 		return
 	}
 
 	opts := s.GetOpts()
 	if opts.GetGroup() != protocol.BLANK {
 		if !self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
-			log.Warn(
-				"Message cannot be processed. Unable to acquire Lock.",
-				"Topic", topic,
-				"Group", opts.GetGroup(),
-				"Sender", d.GetSender(),
+			ui.Warn(
+				"Unable to acquire Lock. Topic %v Group %v Sender %v",
+				topic, opts.GetGroup(), d.GetSender(),
 			)
 			return
 		}
@@ -102,7 +98,7 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 
 	req := NewRequest(topic, *d)
 
-	res := &Response{}
+	res := &Message{}
 	res.SetSender(self.backend.ResponseTopic(senderId))
 
 	done := make(chan bool, 1)
@@ -153,7 +149,7 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 			}
 
 			if err := self.publish(res.GetSender(), res); err != nil {
-				log.Error(err.Error())
+				ui.Alert(err.Error())
 			}
 		}
 
@@ -168,10 +164,10 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.Re
 }
 
 func (self *Gilmour) sendTimeout(senderId, channel string) {
-	msg := &Response{}
+	msg := &Message{}
 	msg.SetSender(senderId).SetCode(499).SetData("Execution timed out")
 	if err := self.publish(channel, msg); err != nil {
-		log.Error(err.Error())
+		ui.Alert(err.Error())
 	}
 }
 
@@ -336,7 +332,11 @@ func (self *Gilmour) GetErrorMethod() string {
 }
 
 func (self *Gilmour) ReportError(e *protocol.Error) {
-	log.Warn("Reporting Error", "Code", e.GetCode(), "Sender", e.GetSender(), "Topic", e.GetTopic())
+	ui.Warn(
+		"Reporting Error. Code %v Sender %v Topic %v",
+		e.GetCode(), e.GetSender(), e.GetTopic(),
+	)
+
 	err := self.backend.ReportError(self.GetErrorMethod(), e)
 	if err != nil {
 		panic(err)
@@ -359,9 +359,9 @@ func (self *Gilmour) slotDestination(topic string) string {
 	}
 }
 
-func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (sender string, err error) {
+func (self *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender string, err error) {
 	if msg == nil {
-		msg = NewResponse()
+		msg = NewMessage()
 	}
 
 	sender = protocol.MakeSenderId()
@@ -398,9 +398,33 @@ func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (se
 	return sender, self.publish(self.requestDestination(topic), msg)
 }
 
-func (self *Gilmour) Signal(topic string, msg *Response) (sender string, err error) {
+func (self *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*Request, error) {
+	var req *Request
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	if opts == nil {
+		opts = NewRequestOpts()
+	}
+
+	opts.SetHandler(func(r *Request, _ *Message) {
+		defer wg.Done()
+		req = r
+	})
+
+	_, err := self.Request(topic, msg, opts)
+	if err != nil {
+		wg.Done()
+	}
+
+	wg.Wait()
+	return req, err
+}
+
+func (self *Gilmour) Signal(topic string, msg *Message) (sender string, err error) {
 	if msg == nil {
-		msg = NewResponse()
+		msg = NewMessage()
 	}
 
 	sender = protocol.MakeSenderId()
@@ -409,7 +433,7 @@ func (self *Gilmour) Signal(topic string, msg *Response) (sender string, err err
 }
 
 // Internal method to publish a message.
-func (self *Gilmour) publish(topic string, msg *Response) error {
+func (self *Gilmour) publish(topic string, msg *Message) error {
 	if msg.GetCode() == 0 {
 		msg.SetCode(200)
 	}

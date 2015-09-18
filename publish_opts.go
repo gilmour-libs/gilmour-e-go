@@ -32,7 +32,6 @@ type RequestOpts struct {
 	confirm bool
 	timeout int
 	handler Handler
-	SignalOpts
 }
 
 //Override the ShouldConfirmSubscriber to force it to be true.

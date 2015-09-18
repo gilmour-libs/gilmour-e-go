@@ -2,7 +2,7 @@ package gilmour
 
 import (
 	"fmt"
-	golog "log"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -12,6 +12,7 @@ import (
 
 	redigo "github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/ui"
 )
 
 const (
@@ -55,12 +56,12 @@ func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
 
 	idents, err2 := redigo.Strings(conn.Do("PUBSUB", "CHANNELS"))
 	if err2 != nil {
-		golog.Println(err2.Error())
+		log.Println(err2.Error())
 		return false, err2
 	}
 
 	for _, t := range idents {
-		golog.Println(t)
+		log.Println(t)
 		if t == topic {
 			return true, nil
 		}
@@ -81,10 +82,11 @@ func TestHealthSubscribe(t *testing.T) {
 func TestSubscribePing(t *testing.T) {
 	timeout := 3
 	handler_opts := MakeHandlerOpts().SetTimeout(timeout)
-	sub, err := engine.ReplyTo(PingTopic, func(req *Request, resp *Response) {
+	sub, err := engine.ReplyTo(PingTopic, func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
-		req.Logger.Debug(PingTopic, "Received", x)
+		ui.Message("Topic %v Received %v", PingTopic, x)
+		ui.Message("Topic %v Sending %v", PingTopic, PingResponse)
 		resp.Send(PingResponse)
 	}, handler_opts)
 
@@ -104,10 +106,50 @@ func TestSubscribePing(t *testing.T) {
 	}
 }
 
+func TestSubscribePingResponse(t *testing.T) {
+	done := make(chan bool, 1)
+
+	data := NewMessage().SetData("ping?")
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+		var recv string
+		req.Data(&recv)
+
+		if recv != PingResponse {
+			t.Error("Expecting", PingResponse, "Found", recv)
+		}
+
+		done <- true
+	})
+
+	_, err := engine.Request(PingTopic, data, opts)
+	if err != nil {
+		t.Error("Error in response", err.Error())
+		return
+	}
+
+	<-done
+}
+
+func TestSubscribePingSync(t *testing.T) {
+	data := NewMessage().SetData("ping?")
+	req, err := engine.SyncRequest(PingTopic, data, nil)
+	if err != nil {
+		t.Error("Error in sync response", err.Error())
+		return
+	}
+
+	var recv string
+	req.Data(&recv)
+
+	if recv != PingResponse {
+		t.Error("Expecting", PingResponse, "Found", recv)
+	}
+}
+
 func TestWildcardSlot(t *testing.T) {
 	opts := MakeHandlerOpts().SetGroup("wildcard_group")
 	topic := fmt.Sprintf("%v*", PingTopic)
-	_, err := engine.Slot(topic, func(req *Request, resp *Response) {}, opts)
+	_, err := engine.Slot(topic, func(req *Request, resp *Message) {}, opts)
 	if err != nil {
 		t.Error("Error Subscribing", PingTopic, err.Error())
 	}
@@ -115,7 +157,7 @@ func TestWildcardSlot(t *testing.T) {
 
 func TestWildcardReply(t *testing.T) {
 	topic := fmt.Sprintf("%v*", PingTopic)
-	_, err := engine.ReplyTo(topic, func(req *Request, resp *Response) {}, nil)
+	_, err := engine.ReplyTo(topic, func(req *Request, resp *Message) {}, nil)
 	if err == nil {
 		t.Error("ReplyTo cannot have wildcard topics.")
 	}
@@ -124,7 +166,7 @@ func TestWildcardReply(t *testing.T) {
 func TestPublisherSleep(t *testing.T) {
 	_, err := engine.ReplyTo(
 		SleepTopic,
-		func(req *Request, resp *Response) {
+		func(req *Request, resp *Message) {
 			var delay int
 			req.Data(&delay)
 			time.Sleep(time.Duration(delay) * time.Second)
@@ -159,7 +201,7 @@ func TestHealthGetAll(t *testing.T) {
 
 func TestUnsubscribe(t *testing.T) {
 	topic := randSeq(10)
-	sub, err := engine.Slot(topic, func(req *Request, resp *Response) {}, nil)
+	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {}, nil)
 	if err != nil {
 		t.Error("Error Subscribing", topic, err.Error())
 		return
@@ -191,7 +233,7 @@ func TestTwiceSlot(t *testing.T) {
 	}()
 
 	for i := 0; i < 2; i++ {
-		sub, err := engine.Slot(topic, func(_ *Request, _ *Response) {}, opts)
+		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {}, opts)
 		if sub != nil {
 			subs = append(subs, sub)
 		} else if err != nil {
@@ -213,7 +255,7 @@ func TestTwiceSlotFail(t *testing.T) {
 	}()
 
 	for i := 0; i < count; i++ {
-		sub, err := engine.Slot(topic, func(_ *Request, _ *Response) {}, opts)
+		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {}, opts)
 		if sub != nil {
 			subs = append(subs, sub)
 		} else if i == 1 {
@@ -239,7 +281,7 @@ func TestTwiceReplyToFail(t *testing.T) {
 	}()
 
 	for i := 0; i < count; i++ {
-		sub, err := engine.ReplyTo(topic, func(_ *Request, _ *Response) {}, opts)
+		sub, err := engine.ReplyTo(topic, func(_ *Request, _ *Message) {}, opts)
 		if sub != nil {
 			subs = append(subs, sub)
 		} else if i == 1 {
@@ -277,7 +319,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 		data := fmt.Sprintf("hello %v", i)
 		opts := MakeHandlerOpts().SetGroup(randSeq(10))
 
-		sub, err := engine.Slot(topic, func(_ *Request, _ *Response) {
+		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {
 			out_chan <- data
 		}, opts)
 
@@ -290,7 +332,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 	}
 
 	//Publish a message to random topic
-	engine.Signal(topic, NewResponse().SetData("ping?"))
+	engine.Signal(topic, NewMessage().SetData("ping?"))
 
 	// Select Case, once and that should work.
 	for i := 0; i < count; i++ {
@@ -298,22 +340,22 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 		case result := <-out_chan:
 			out = append(out, result)
 		case <-time.After(time.Second * 2):
-			t.Error("Response should be twice, timed out instead")
+			t.Error("Message should be twice, timed out instead")
 		}
 	}
 
 	// Results should be received twice.
 	if len(out) != count {
-		t.Error("Response should be returned ", count, "items. Found", out)
+		t.Error("Message should be returned ", count, "items. Found", out)
 	}
 }
 
 func TestHealthResponse(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	data := NewResponse().SetData("is-healthy?")
+	data := NewMessage().SetData("is-healthy?")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		x := []string{}
 		req.Data(&x)
 
@@ -332,10 +374,10 @@ func TestHealthResponse(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "healthy" {
-			t.Error("Response should be healthy. Found", result)
+			t.Error("Message should be healthy. Found", result)
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Response should be", PingResponse, "timed out instead")
+		t.Error("Message should be", PingResponse, "timed out instead")
 	}
 }
 
@@ -346,21 +388,21 @@ func TestReceiveOnWildcard(t *testing.T) {
 	//Subscribe to the wildcard topic.
 	sub, _ := engine.Slot(
 		topic,
-		func(_ *Request, _ *Response) {
+		func(_ *Request, _ *Message) {
 			out_chan <- PingResponse
 		},
 		nil,
 	)
 
 	//Publish a message to random topic
-	engine.Signal("pingworld", NewResponse().SetData("ping?"))
+	engine.Signal("pingworld", NewMessage().SetData("ping?"))
 
 	// Select Case, once and that should work.
 	select {
 	case <-out_chan:
 		// True Case.
 	case <-time.After(time.Second * 2):
-		t.Error("Response should be received, timed out instead")
+		t.Error("Message should be received, timed out instead")
 	}
 
 	// cleanup. Unsubscribe from all subscribed channels.
@@ -375,9 +417,9 @@ func TestReceiveOnWildcard(t *testing.T) {
 func TestSendAndReceive(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	data := NewResponse().SetData("ping?")
+	data := NewMessage().SetData("ping?")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
@@ -391,10 +433,10 @@ func TestSendAndReceive(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != PingResponse {
-			t.Error("Response should be", PingResponse, "Found", result)
+			t.Error("Message should be", PingResponse, "Found", result)
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Response should be", PingResponse, "timed out instead")
+		t.Error("Message should be", PingResponse, "timed out instead")
 	}
 }
 
@@ -403,8 +445,8 @@ func TestPublisherTimeout(t *testing.T) {
 
 	sleepFor := 5
 
-	data := NewResponse().SetData(sleepFor)
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
+	data := NewMessage().SetData(sleepFor)
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
@@ -418,10 +460,10 @@ func TestPublisherTimeout(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "Execution timed out" {
-			t.Error("Response should be 'Execution timed out' Found", result)
+			t.Error("Message should be 'Execution timed out' Found", result)
 		}
 	case <-time.After(time.Second * time.Duration(sleepFor)):
-		t.Error("Response should be", "Execution timed out", "timed out instead")
+		t.Error("Message should be", "Execution timed out", "timed out instead")
 	}
 }
 
@@ -440,7 +482,7 @@ func TestSansHandlerRequest(t *testing.T) {
 }
 
 func TestSansListenerRequest(t *testing.T) {
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {})
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {})
 
 	_, err := engine.Request("humpty-dumpty", nil, opts)
 	if err == nil || !strings.Contains(err.Error(), "listeners") {
@@ -454,7 +496,7 @@ func TestSubscriberTimeout(t *testing.T) {
 
 	sub, err := engine.ReplyTo(
 		topic,
-		func(req *Request, resp *Response) {
+		func(req *Request, resp *Message) {
 			time.Sleep(time.Second * 4)
 			resp.Send(PingResponse)
 		},
@@ -466,9 +508,9 @@ func TestSubscriberTimeout(t *testing.T) {
 		return
 	}
 
-	data := NewResponse().SetData("send")
+	data := NewMessage().SetData("send")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
@@ -479,10 +521,10 @@ func TestSubscriberTimeout(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "Execution timed out" {
-			t.Error("Response should be Execution timed out. Found", result)
+			t.Error("Message should be Execution timed out. Found", result)
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Response should be", PingResponse, "timed out instead")
+		t.Error("Message should be", PingResponse, "timed out instead")
 	}
 
 	engine.UnsubscribeReply(topic, sub)
@@ -492,10 +534,10 @@ func TestHandlerException(t *testing.T) {
 	out_chan := make(chan int, 1)
 	topic := randSeq(10)
 
-	sub, err := engine.ReplyTo(topic, func(req *Request, resp *Response) {
+	sub, err := engine.ReplyTo(topic, func(req *Request, resp *Message) {
 		// Just to induce errors, access a null pointers's method.
 		var x *HandlerOpts
-		golog.Println(x.GetGroup())
+		log.Println(x.GetGroup())
 	}, nil)
 
 	if err != nil {
@@ -503,9 +545,9 @@ func TestHandlerException(t *testing.T) {
 		return
 	}
 
-	data := NewResponse().SetData("send")
+	data := NewMessage().SetData("send")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		out_chan <- req.Code()
 	})
 
@@ -514,25 +556,25 @@ func TestHandlerException(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != 500 {
-			t.Error("Response should raise exception")
+			t.Error("Message should raise exception")
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Response should have raised Exception, timed out instead")
+		t.Error("Message should have raised Exception, timed out instead")
 	}
 
 	engine.UnsubscribeReply(topic, sub)
 }
 
 func TestSansListener(t *testing.T) {
-	data := NewResponse().SetData("ping?")
+	data := NewMessage().SetData("ping?")
 	if _, err := engine.Signal("ping-sans-listener", data); err != nil {
 		t.Error(err)
 	}
 }
 
 func TestConfirmSansListener(t *testing.T) {
-	data := NewResponse().SetData("ping?")
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {})
+	data := NewMessage().SetData("ping?")
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {})
 
 	if _, err := engine.Request("ping-confirm-sans-listener", data, opts); err != nil {
 		if !strings.Contains(err.Error(), "active listeners") {
@@ -553,6 +595,8 @@ func waitBeforeExiting(interval int) {
 }
 
 func TestMain(m *testing.M) {
+	ui.SetLevel(ui.Levels.Message)
+
 	engine = Get(redis)
 
 	engine.Start()
