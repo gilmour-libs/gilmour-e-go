@@ -85,6 +85,7 @@ func TestSubscribePing(t *testing.T) {
 		var x string
 		req.Data(&x)
 		req.Logger.Debug(PingTopic, "Received", x)
+		req.Logger.Debug(PingTopic, "Sending", PingResponse)
 		resp.Send(PingResponse)
 	}, handler_opts)
 
@@ -101,6 +102,46 @@ func TestSubscribePing(t *testing.T) {
 
 	if has, _ := isReplySubscribed(PingTopic); !has {
 		t.Error("Topic", PingTopic, "should have been subscribed")
+	}
+}
+
+func TestSubscribePingResponse(t *testing.T) {
+	done := make(chan bool, 1)
+
+	data := NewResponse().SetData("ping?")
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Response) {
+		var recv string
+		req.Data(&recv)
+
+		if recv != PingResponse {
+			t.Error("Expecting", PingResponse, "Found", recv)
+		}
+
+		done <- true
+	})
+
+	_, err := engine.Request(PingTopic, data, opts)
+	if err != nil {
+		t.Error("Error in response", err.Error())
+		return
+	}
+
+	<-done
+}
+
+func TestSubscribePingSync(t *testing.T) {
+	data := NewResponse().SetData("ping?")
+	req, err := engine.SyncRequest(PingTopic, data, nil)
+	if err != nil {
+		t.Error("Error in sync response", err.Error())
+		return
+	}
+
+	var recv string
+	req.Data(&recv)
+
+	if recv != PingResponse {
+		t.Error("Expecting", PingResponse, "Found", recv)
 	}
 }
 

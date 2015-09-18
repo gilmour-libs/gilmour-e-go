@@ -398,6 +398,30 @@ func (self *Gilmour) Request(topic string, msg *Response, opts *RequestOpts) (se
 	return sender, self.publish(self.requestDestination(topic), msg)
 }
 
+func (self *Gilmour) SyncRequest(topic string, msg *Response, opts *RequestOpts) (*Request, error) {
+	var req *Request
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	if opts == nil {
+		opts = NewRequestOpts()
+	}
+
+	opts.SetHandler(func(r *Request, _ *Response) {
+		defer wg.Done()
+		req = r
+	})
+
+	_, err := self.Request(topic, msg, opts)
+	if err != nil {
+		wg.Done()
+	}
+
+	wg.Wait()
+	return req, err
+}
+
 func (self *Gilmour) Signal(topic string, msg *Response) (sender string, err error) {
 	if msg == nil {
 		msg = NewResponse()
