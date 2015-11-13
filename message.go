@@ -52,12 +52,40 @@ func (self *Message) SetSender(sender string) *Message {
 	return self
 }
 
+type pubMsg struct {
+	Data   interface{} `json:"data"`
+	Code   int         `json:"code"`
+	Sender string      `json:"sender"`
+}
+
 func (self *Message) Marshal() ([]byte, error) {
-	return json.Marshal(struct {
-		Data   interface{} `json:"data"`
-		Code   int         `json:"code"`
-		Sender string      `json:"sender"`
-	}{self.data, self.code, self.sender})
+	return json.Marshal(pubMsg{self.data, self.code, self.sender})
+}
+
+func ParseMessage(data interface{}) (resp *Message, err error) {
+	var msg []byte
+
+	switch t := data.(type) {
+	case string:
+		msg = []byte(t)
+	case []byte:
+		msg = t
+	case json.RawMessage:
+		msg = t
+	}
+
+	_msg := new(pubMsg)
+
+	err = json.Marshal(msg, _msg)
+
+	if err == nil {
+		resp = new(Message)
+		resp.Send(_msg.data)
+		resp.SetCode(_msg.code)
+		resp.SetSender(_msg.sender)
+	}
+
+	return
 }
 
 func NewMessage() *Message {

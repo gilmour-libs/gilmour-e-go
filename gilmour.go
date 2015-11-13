@@ -3,6 +3,7 @@ package gilmour
 import (
 	"errors"
 	"fmt"
+	"log"
 	"runtime"
 	"strings"
 	"sync"
@@ -73,7 +74,7 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 }
 
 func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data interface{}) {
-	d, err := protocol.ParseResponse(data)
+	d, err := protocol.ParseMessage(data)
 	if err != nil {
 		ui.Alert(err.Error())
 		return
@@ -93,8 +94,8 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 	go self.handleRequest(s, topic, d)
 }
 
-func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.RecvRequest) {
-	senderId := d.GetSender()
+func (self *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
+	senderId := m.GetSender()
 
 	req := NewRequest(topic, *d)
 
@@ -398,6 +399,8 @@ func (self *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sen
 	return sender, self.publish(self.requestDestination(topic), msg)
 }
 
+// Same as Request but emulates synchronous behavior. Will not return until you
+// have error or data.
 func (self *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*Request, error) {
 	var req *Request
 
@@ -460,4 +463,60 @@ func (self *Gilmour) publish(topic string, msg *Message) error {
 	}
 
 	return self.backend.Publish(topic, msg)
+}
+
+//Tail recursion over Commands, eventually writing message to requestHandler.
+func compose(cmds []*Command, engine *Gilmour, m *Message, o *RequestOpts) {
+	if len(cmds) == 0 {
+		req := NewRequest("composition")
+		res := NewMessage()
+		o.GetHandler()(req, res)
+
+		return
+	}
+
+	cmd, tail := cmds[0], cmds[1:]
+
+	opts := NewRequestOpts().SetHandler(func(r *Request, s *Message) {
+		intf := new(map[string]interface{})
+		r.Data(intf)
+
+		msg := &Message{data: intf, code: r.Code(), sender: r.Sender()}
+
+		if cmd.transformer != nil {
+			if _, err := cmd.transformer.Transform(msg); err != nil {
+				log.Println(err)
+			}
+		}
+
+		compose(tail, engine, msg, o)
+	})
+
+	engine.Request(cmd.topic, m, opts)
+}
+
+//Expose a method to handle Compositions
+func (self *Gilmour) Compose(c *Composition, m *Message, o *RequestOpts) {
+	compose(c.cmds, self, m, o)
+}
+
+func (self *Gilmour) AndAnd(c *Composition, m *Message, o *RequestOpts) error {
+	for _, x := range c.cmds {
+		log.Println(x)
+	}
+	return nil
+}
+
+func (self *Gilmour) Batch(c *Composition, m *Message, o *RequestOpts) error {
+	for _, x := range c.cmds {
+		log.Println(x)
+	}
+	return nil
+}
+
+func (self *Gilmour) Parallel(c *Composition, m *Message, o *RequestOpts) error {
+	for _, x := range c.cmds {
+		log.Println(x)
+	}
+	return nil
 }

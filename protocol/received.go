@@ -4,29 +4,29 @@ import (
 	"encoding/json"
 )
 
-type RecvRequest struct {
+type RecvRequestd struct {
 	Data   json.RawMessage `json:"data"`
 	Code   int             `json:"code"`
 	Sender string          `json:"sender"`
 }
 
-func (self *RecvRequest) GetData(t interface{}) error {
+func (self *RecvRequestd) GetData(t interface{}) error {
 	return json.Unmarshal(self.Data, t)
 }
 
-func (self *RecvRequest) RawData() []byte {
+func (self *RecvRequestd) RawData() []byte {
 	return self.Data
 }
 
-func (self *RecvRequest) GetCode() int {
+func (self *RecvRequestd) GetCode() int {
 	return self.Code
 }
 
-func (self *RecvRequest) GetSender() string {
+func (self *RecvRequestd) GetSender() string {
 	return self.Sender
 }
 
-func ParseResponse(data interface{}) (resp *RecvRequest, err error) {
+func ParseResponse(data interface{}) (resp *RecvRequestd, err error) {
 	var msg []byte
 
 	switch t := data.(type) {
