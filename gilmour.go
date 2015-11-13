@@ -74,7 +74,7 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 }
 
 func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data interface{}) {
-	d, err := protocol.ParseMessage(data)
+	m, err := ParseMessage(data)
 	if err != nil {
 		ui.Alert(err.Error())
 		return
@@ -82,22 +82,22 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 
 	opts := s.GetOpts()
 	if opts.GetGroup() != protocol.BLANK {
-		if !self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
+		if !self.backend.AcquireGroupLock(opts.GetGroup(), m.GetSender()) {
 			ui.Warn(
 				"Unable to acquire Lock. Topic %v Group %v Sender %v",
-				topic, opts.GetGroup(), d.GetSender(),
+				topic, opts.GetGroup(), m.GetSender(),
 			)
 			return
 		}
 	}
 
-	go self.handleRequest(s, topic, d)
+	go self.handleRequest(s, topic, m)
 }
 
 func (self *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 	senderId := m.GetSender()
 
-	req := NewRequest(topic, *d)
+	req := NewRequest(topic, m)
 
 	res := &Message{}
 	res.SetSender(self.backend.ResponseTopic(senderId))
@@ -468,9 +468,9 @@ func (self *Gilmour) publish(topic string, msg *Message) error {
 //Tail recursion over Commands, eventually writing message to requestHandler.
 func compose(cmds []*Command, engine *Gilmour, m *Message, o *RequestOpts) {
 	if len(cmds) == 0 {
-		req := NewRequest("composition")
-		res := NewMessage()
-		o.GetHandler()(req, res)
+		if o != nil {
+			o.GetHandler()(NewRequest("composition", m), NewMessage())
+		}
 
 		return
 	}

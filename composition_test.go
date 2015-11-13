@@ -1,6 +1,9 @@
 package gilmour
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 func makeCommand() *Command {
 	cmd := new(Command)
@@ -107,5 +110,13 @@ func TestComposition(t *testing.T) {
 	data := map[string]interface{}{"x": 1, "y": 2}
 	m := makeMessage(data)
 
-	engine.Compose(c, m, nil)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+		wg.Done()
+	})
+
+	engine.Compose(c, m, opts)
+	wg.Wait()
 }

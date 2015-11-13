@@ -7,11 +7,21 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 )
 
+type pubMsg struct {
+	Data   interface{} `json:"data"`
+	Code   int         `json:"code"`
+	Sender string      `json:"sender"`
+}
+
 type Message struct {
 	data   interface{} `json:"data"`
 	code   int         `json:"code"`
 	sender string      `json:"sender"`
 	sync.Mutex
+}
+
+func (self *Message) StringData() ([]byte, error) {
+	return json.Marshal(self.data)
 }
 
 func (self *Message) GetData() interface{} {
@@ -52,14 +62,16 @@ func (self *Message) SetSender(sender string) *Message {
 	return self
 }
 
-type pubMsg struct {
-	Data   interface{} `json:"data"`
-	Code   int         `json:"code"`
-	Sender string      `json:"sender"`
-}
-
 func (self *Message) Marshal() ([]byte, error) {
 	return json.Marshal(pubMsg{self.data, self.code, self.sender})
+}
+
+func (self *Message) Unmarshal(t interface{}) error {
+	if byts, err := self.StringData(); err != nil {
+		return err
+	} else {
+		return json.Unmarshal(byts, t)
+	}
 }
 
 func ParseMessage(data interface{}) (resp *Message, err error) {
@@ -75,14 +87,9 @@ func ParseMessage(data interface{}) (resp *Message, err error) {
 	}
 
 	_msg := new(pubMsg)
-
-	err = json.Marshal(msg, _msg)
-
+	err = json.Unmarshal(msg, _msg)
 	if err == nil {
-		resp = new(Message)
-		resp.Send(_msg.data)
-		resp.SetCode(_msg.code)
-		resp.SetSender(_msg.sender)
+		resp = &Message{data: _msg.Data, code: _msg.Code, sender: _msg.Sender}
 	}
 
 	return
