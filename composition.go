@@ -59,6 +59,12 @@ func (c *Command) AddTransform(t Transformer) (err error) {
 	return
 }
 
+func NewCommand(topic string) *Command {
+	x := new(Command)
+	x.SetTopic(topic)
+	return x
+}
+
 // Composition refers to a group of commands and defines the manner in which
 // they are to be executed. Common Compositions are:
 // AndAnd, Batch, Pipe, Parallel. etc. Read documentation for more details.

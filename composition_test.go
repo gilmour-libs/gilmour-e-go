@@ -101,22 +101,61 @@ func TestCommandTransform(t *testing.T) {
 func TestComposition(t *testing.T) {
 	c := new(Composition)
 
-	cmd := new(Command)
-	cmd.SetTopic(composeOne)
+	cmd := NewCommand(composeOne)
 	cmd.AddTransform(NewTransformer(map[string]interface{}{"a": 1, "b": 2}))
-
 	c.AddCommand(cmd)
-
-	data := map[string]interface{}{"x": 1, "y": 2}
-	m := makeMessage(data)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
+	expected := map[string]interface{}{}
+
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
-		wg.Done()
+		defer wg.Done()
+		req.Data(&expected)
 	})
 
-	engine.Compose(c, m, opts)
+	engine.Compose(c, makeMessage("ok"), opts)
 	wg.Wait()
+
+	if _, ok := expected["b"]; !ok {
+		t.Error("Must have b in final output")
+	}
+
+	if _, ok := expected["ack-one"]; !ok {
+		t.Error("Must have ack-one in final output")
+	}
+}
+
+func TestCompositionComplex(t *testing.T) {
+	c := new(Composition)
+
+	cmd := NewCommand(composeOne)
+	cmd.AddTransform(NewTransformer(map[string]interface{}{"a": 1, "b": 2}))
+	c.AddCommand(cmd)
+
+	cmd2 := NewCommand(composeTwo)
+	cmd2.AddTransform(NewTransformer(map[string]interface{}{"c": 3, "d": 4}))
+	c.AddCommand(cmd2)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	expected := map[string]interface{}{}
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+		defer wg.Done()
+		req.Data(&expected)
+	})
+
+	engine.Compose(c, makeMessage("ok"), opts)
+	wg.Wait()
+
+	if _, ok := expected["c"]; !ok {
+		t.Error("Must have b in final output")
+	}
+
+	if _, ok := expected["ack-two"]; !ok {
+		t.Error("Must have ack-one in final output")
+	}
 }
