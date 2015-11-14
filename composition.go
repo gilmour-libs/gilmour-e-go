@@ -1,11 +1,15 @@
 package gilmour
 
-import "errors"
+import (
+	"errors"
+	"log"
+	"sync"
+)
 
 // Common Messenger interface that allows Dummy Transformer or another
 // Composition.
 type Transformer interface {
-	Transform(*Message) (*Message, error)
+	Transform(*Message, *Gilmour) (*Message, error)
 }
 
 // Standalone Method transformer.
@@ -22,7 +26,7 @@ func (ft *FuncTransformer) Seed(s interface{}) *FuncTransformer {
 	return ft
 }
 
-func (ft *FuncTransformer) Transform(m *Message) (*Message, error) {
+func (ft *FuncTransformer) Transform(m *Message, _ *Gilmour) (*Message, error) {
 	err := compositionMerge(&m.data, &ft.seed)
 	return m, err
 }
@@ -76,8 +80,46 @@ func (c *Composition) AddCommand(cmd *Command) {
 	c.cmds = append(c.cmds, cmd)
 }
 
-func (c *Composition) Transform(m *Message) (*Message, error) {
-	return new(Message), nil
+//Tail recursion over Commands, eventually writing message to requestHandler.
+func (c *Composition) do(e *Gilmour, m *Message, cb func(*Message, error)) {
+	if len(c.cmds) == 0 {
+		cb(m, nil)
+		return
+	}
+
+	cmd, tail := c.cmds[0], c.cmds[1:]
+
+	opts := NewRequestOpts().SetHandler(func(r *Request, s *Message) {
+		intf := new(map[string]interface{})
+		r.Data(intf)
+
+		msg := &Message{data: intf, code: r.Code(), sender: r.Sender()}
+
+		if cmd.transformer != nil {
+			if _, err := cmd.transformer.Transform(msg, nil); err != nil {
+				log.Println(err)
+			}
+		}
+
+		c.cmds = tail
+		c.do(e, msg, cb)
+	})
+
+	e.Request(cmd.topic, m, opts)
+}
+
+func (c *Composition) Transform(m *Message, g *Gilmour) (msg *Message, err error) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	c.do(g, m, func(ret *Message, e2 error) {
+		msg = ret
+		err = e2
+		wg.Done()
+	})
+
+	wg.Wait()
+	return
 }
 
 type CompositionOpts struct {

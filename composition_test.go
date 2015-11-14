@@ -46,14 +46,14 @@ func makeMessage(data interface{}) *Message {
 func TestCompTransformer(t *testing.T) {
 	override := map[string]interface{}{"a": 1, "b": 2}
 	m := NewTransformer(override)
-	m.Transform(makeMessage("hello"))
+	m.Transform(makeMessage("hello"), nil)
 }
 
 func TestCompTransformFail(t *testing.T) {
 	o := map[string]interface{}{"a": 1, "b": 2}
 	m := makeMessage("hello")
 
-	if _, err := NewTransformer(o).Transform(m); err == nil {
+	if _, err := NewTransformer(o).Transform(m, nil); err == nil {
 		t.Error("Must return error. Cannot merge string and map.")
 	}
 }
@@ -63,7 +63,7 @@ func TestCompTransformMerge(t *testing.T) {
 	data := map[string]interface{}{"x": 1, "y": 2}
 	m := makeMessage(data)
 
-	if _, err := NewTransformer(o).Transform(m); err != nil {
+	if _, err := NewTransformer(o).Transform(m, nil); err != nil {
 		t.Error(err)
 	} else if _, ok := data["a"]; !ok {
 		t.Error("Must have key a in the merged data")
@@ -128,6 +128,11 @@ func TestComposition(t *testing.T) {
 }
 
 func TestCompositionComplex(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	expected := map[string]interface{}{}
+
 	c := new(Composition)
 
 	cmd := NewCommand(composeOne)
@@ -138,17 +143,13 @@ func TestCompositionComplex(t *testing.T) {
 	cmd2.AddTransform(NewTransformer(map[string]interface{}{"c": 3, "d": 4}))
 	c.AddCommand(cmd2)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	expected := map[string]interface{}{}
-
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		defer wg.Done()
 		req.Data(&expected)
 	})
 
 	engine.Compose(c, makeMessage("ok"), opts)
+
 	wg.Wait()
 
 	if _, ok := expected["c"]; !ok {

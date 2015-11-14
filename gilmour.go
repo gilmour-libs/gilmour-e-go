@@ -465,39 +465,20 @@ func (self *Gilmour) publish(topic string, msg *Message) error {
 	return self.backend.Publish(topic, msg)
 }
 
-//Tail recursion over Commands, eventually writing message to requestHandler.
-func compose(cmds []*Command, engine *Gilmour, m *Message, o *RequestOpts) {
-	if len(cmds) == 0 {
-		if o != nil {
-			o.GetHandler()(NewRequest("composition", m), NewMessage())
-		}
-
-		return
-	}
-
-	cmd, tail := cmds[0], cmds[1:]
-
-	opts := NewRequestOpts().SetHandler(func(r *Request, s *Message) {
-		intf := new(map[string]interface{})
-		r.Data(intf)
-
-		msg := &Message{data: intf, code: r.Code(), sender: r.Sender()}
-
-		if cmd.transformer != nil {
-			if _, err := cmd.transformer.Transform(msg); err != nil {
-				log.Println(err)
-			}
-		}
-
-		compose(tail, engine, msg, o)
-	})
-
-	engine.Request(cmd.topic, m, opts)
-}
-
 //Expose a method to handle Compositions
 func (self *Gilmour) Compose(c *Composition, m *Message, o *RequestOpts) {
-	compose(c.cmds, self, m, o)
+	c.do(self, m, func(ret *Message, err error) {
+		if o == nil {
+			return
+		}
+
+		fn := o.GetHandler()
+		if fn == nil {
+			return
+		}
+
+		fn(NewRequest("composition", ret), NewMessage())
+	})
 }
 
 func (self *Gilmour) AndAnd(c *Composition, m *Message, o *RequestOpts) error {
