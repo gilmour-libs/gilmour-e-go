@@ -160,3 +160,27 @@ func TestCompositionComplex(t *testing.T) {
 		t.Error("Must have ack-one in final output")
 	}
 }
+
+func TestCompositionTransform(t *testing.T) {
+	c := new(Composition)
+
+	cmd := NewCommand(composeOne)
+	cmd.AddTransform(NewTransformer(map[string]interface{}{"a": 1, "b": 2}))
+	c.AddCommand(cmd)
+
+	msg, err := c.Transform(makeMessage("ok"), engine)
+	if err != nil {
+		t.Error("Should not have raised error.")
+	}
+
+	data := map[string]interface{}{}
+	msg.Unmarshal(&data)
+
+	if _, ok := data["a"]; !ok {
+		t.Error("Must have a in final output")
+	}
+
+	if _, ok := data["ack-one"]; !ok {
+		t.Error("Must have ack-one in final output")
+	}
+}
