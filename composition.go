@@ -89,18 +89,24 @@ func (c *Composition) AddCommand(cmd *Command) {
 }
 
 //Tail recursion over Commands, eventually writing message to requestHandler.
-func (c *Composition) internal_do(
-	m *Message, finally chan<- *Message, do func(*Request, *Message),
-) {
+func (c *Composition) internal_do(m *Message, do func(*Request, *Message)) {
 	//No command left to be executed. Issue the final callback.
 	if len(c.cmds) == 0 {
-		finally <- m
 		return
 	}
 
 	cmd, tail := c.cmds[0], c.cmds[1:]
 
-	msg := NewMessage().Send(m.GetData())
+	byts, err := m.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	msg, err := ParseMessage(byts)
+	if err != nil {
+		panic(err)
+	}
+
 	if cmd.transformer != nil {
 		if _, err := cmd.transformer.Transform(msg); err != nil {
 			log.Println(err)
@@ -109,32 +115,36 @@ func (c *Composition) internal_do(
 
 	//Update the Tail to only be left with remaining elements.
 	c.cmds = tail
-
 	opts := NewRequestOpts().SetHandler(do)
-	/*
-		, func(recvr *Request, sendr *Message) {
-			do(recvr, sendr)
-		})
-	*/
-
 	c.engine.Request(cmd.topic, msg, opts)
 }
 
 // Analogus to Linux x && y && z
 // Will quit at first failure.
 func (c *Composition) AndAnd(m *Message, finally chan<- *Message) {
-	c.internal_do(m, finally, func(r *Request, s *Message) {
-		c.AndAnd(m, finally)
+	c.internal_do(m, func(r *Request, s *Message) {
+		if len(c.cmds) == 0 {
+			msg := NewMessage().Send(map[string]interface{}{})
+			r.Data(&msg.data)
+			finally <- msg
+		} else {
+			c.AndAnd(m, finally)
+		}
 	})
 }
 
 // Analogus to Linux x | y | z
 // Will keep going on even if something fails.
 func (c *Composition) Pipe(m *Message, finally chan<- *Message) {
-	c.internal_do(m, finally, func(r *Request, s *Message) {
+	c.internal_do(m, func(r *Request, s *Message) {
 		msg := NewMessage().Send(map[string]interface{}{})
 		r.Data(&msg.data)
-		c.Pipe(msg, finally)
+
+		if len(c.cmds) == 0 {
+			finally <- msg
+		} else {
+			c.Pipe(msg, finally)
+		}
 	})
 }
 

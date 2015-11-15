@@ -1,7 +1,6 @@
 package gilmour
 
 import (
-	"log"
 	"sync"
 	"testing"
 )
@@ -119,7 +118,7 @@ func TestCommandTransform(t *testing.T) {
 // Basic composition Test composing single command with single transformation.
 // Output must contain the output of the micro service morphed with the
 // transformation.
-func TestCompositionBasic(t *testing.T) {
+func TestComposePipe(t *testing.T) {
 	c := engine.Composition()
 
 	cmd := NewCommand(composeOne)
@@ -139,8 +138,6 @@ func TestCompositionBasic(t *testing.T) {
 	c.Execute(makeMessage(StrMap{"input": 1}), opts)
 	wg.Wait()
 
-	log.Println(expected)
-
 	if _, ok := expected["merge"]; !ok {
 		t.Error("Must have merge in final output")
 	}
@@ -150,7 +147,7 @@ func TestCompositionBasic(t *testing.T) {
 	}
 }
 
-func TestCompositionComplex(t *testing.T) {
+func TestComposeComplex(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -182,7 +179,7 @@ func TestCompositionComplex(t *testing.T) {
 	}
 }
 
-func TestCompositionTransform(t *testing.T) {
+func TestComposeTransform(t *testing.T) {
 	c := engine.Composition()
 
 	cmd := NewCommand(composeOne)
@@ -204,5 +201,38 @@ func TestCompositionTransform(t *testing.T) {
 	}
 }
 
-func TestCompositionNested(t *testing.T) {
+func TestComposeAndAnd(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	c := engine.AndAnd()
+
+	cmd := NewCommand(composeOne)
+	cmd.AddTransform(NewMerger(StrMap{"merge": 1}))
+	c.AddCommand(cmd)
+
+	cmd2 := NewCommand(composeTwo)
+	cmd2.AddTransform(NewMerger(StrMap{"merge-two": 1}))
+	c.AddCommand(cmd2)
+
+	expected := StrMap{}
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+		defer wg.Done()
+		req.Data(&expected)
+	})
+
+	c.Execute(makeMessage(StrMap{"input": 1}), opts)
+	wg.Wait()
+
+	for _, key := range []string{"merge", "ack-one"} {
+		if _, ok := expected[key]; ok {
+			t.Error("Must NOT have", key, "in final output")
+		}
+	}
+
+	for _, key := range []string{"input", "merge-two", "ack-two"} {
+		if _, ok := expected[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
 }
