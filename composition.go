@@ -3,36 +3,42 @@ package gilmour
 import (
 	"errors"
 	"log"
-	"sync"
+)
+
+const (
+	AndAnd   = "andand"
+	Pipe     = "pipe"
+	Parallel = "parallel"
+	Batch    = "batch"
 )
 
 // Common Messenger interface that allows Dummy Transformer or another
 // Composition.
 type Transformer interface {
-	Transform(*Message, *Gilmour) (*Message, error)
+	Transform(*Message) (*Message, error)
 }
 
-// Standalone Method transformer.
+// Standalone Merge transformer.
 // Used if you want to transform the output of the previous command before
 // seeding it to the next command. Requires to be seeded with an interface
 // which will be applied to the previous command's output Message only if the
 // type is convertible. In case of a failure it shall raise an Error.
-type FuncTransformer struct {
+type MergeTransform struct {
 	seed interface{}
 }
 
-func (ft *FuncTransformer) Seed(s interface{}) *FuncTransformer {
+func (ft *MergeTransform) Seed(s interface{}) *MergeTransform {
 	ft.seed = s
 	return ft
 }
 
-func (ft *FuncTransformer) Transform(m *Message, _ *Gilmour) (*Message, error) {
+func (ft *MergeTransform) Transform(m *Message) (*Message, error) {
 	err := compositionMerge(&m.data, &ft.seed)
 	return m, err
 }
 
-func NewTransformer(s interface{}) *FuncTransformer {
-	n := new(FuncTransformer)
+func NewMerger(s interface{}) *MergeTransform {
+	n := new(MergeTransform)
 	n.Seed(s)
 	return n
 }
@@ -73,7 +79,9 @@ func NewCommand(topic string) *Command {
 // they are to be executed. Common Compositions are:
 // AndAnd, Batch, Pipe, Parallel. etc. Read documentation for more details.
 type Composition struct {
-	cmds []*Command
+	mode   string //AndAnd, Pipe, Batch, Parallel
+	engine *Gilmour
+	cmds   []*Command
 }
 
 func (c *Composition) AddCommand(cmd *Command) {
@@ -81,45 +89,96 @@ func (c *Composition) AddCommand(cmd *Command) {
 }
 
 //Tail recursion over Commands, eventually writing message to requestHandler.
-func (c *Composition) do(e *Gilmour, m *Message, cb func(*Message, error)) {
+func (c *Composition) internal_do(
+	m *Message, finally chan<- *Message, do func(*Request, *Message),
+) {
+	//No command left to be executed. Issue the final callback.
 	if len(c.cmds) == 0 {
-		cb(m, nil)
+		finally <- m
 		return
 	}
 
 	cmd, tail := c.cmds[0], c.cmds[1:]
 
-	opts := NewRequestOpts().SetHandler(func(r *Request, s *Message) {
-		intf := new(map[string]interface{})
-		r.Data(intf)
-
-		msg := &Message{data: intf, code: r.Code(), sender: r.Sender()}
-
-		if cmd.transformer != nil {
-			if _, err := cmd.transformer.Transform(msg, nil); err != nil {
-				log.Println(err)
-			}
+	msg := NewMessage().Send(m.GetData())
+	if cmd.transformer != nil {
+		if _, err := cmd.transformer.Transform(msg); err != nil {
+			log.Println(err)
 		}
+	}
 
-		c.cmds = tail
-		c.do(e, msg, cb)
-	})
+	//Update the Tail to only be left with remaining elements.
+	c.cmds = tail
 
-	e.Request(cmd.topic, m, opts)
+	opts := NewRequestOpts().SetHandler(do)
+	/*
+		, func(recvr *Request, sendr *Message) {
+			do(recvr, sendr)
+		})
+	*/
+
+	c.engine.Request(cmd.topic, msg, opts)
 }
 
-func (c *Composition) Transform(m *Message, g *Gilmour) (msg *Message, err error) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	c.do(g, m, func(ret *Message, e2 error) {
-		msg = ret
-		err = e2
-		wg.Done()
+// Analogus to Linux x && y && z
+// Will quit at first failure.
+func (c *Composition) AndAnd(m *Message, finally chan<- *Message) {
+	c.internal_do(m, finally, func(r *Request, s *Message) {
+		c.AndAnd(m, finally)
 	})
+}
 
-	wg.Wait()
-	return
+// Analogus to Linux x | y | z
+// Will keep going on even if something fails.
+func (c *Composition) Pipe(m *Message, finally chan<- *Message) {
+	c.internal_do(m, finally, func(r *Request, s *Message) {
+		msg := NewMessage().Send(map[string]interface{}{})
+		r.Data(&msg.data)
+		c.Pipe(msg, finally)
+	})
+}
+
+func (c *Composition) selectMode(m *Message) <-chan *Message {
+	//Buffered channel to wait for the message to show up.
+	finally := make(chan *Message, 1)
+
+	switch c.mode {
+	case AndAnd:
+		c.AndAnd(m, finally)
+	case Pipe:
+		c.Pipe(m, finally)
+	default:
+		panic("Unsupported Composition mode")
+	}
+
+	return finally
+}
+
+func (c *Composition) Execute(m *Message, o *RequestOpts) {
+	finally := c.selectMode(m)
+
+	go func() {
+		msg := <-finally
+		if o == nil {
+			return
+		}
+
+		fn := o.GetHandler()
+		if fn == nil {
+			return
+		}
+
+		fn(NewRequest("composition", msg), NewMessage())
+	}()
+}
+
+// Transformer compliant method to be able to pass compositions as valid
+// transformations to commands.
+func (c *Composition) Transform(m *Message) (*Message, error) {
+	finally := c.selectMode(m)
+
+	//Wait for the message to show up.
+	return <-finally, nil
 }
 
 type CompositionOpts struct {

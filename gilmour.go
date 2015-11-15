@@ -3,7 +3,6 @@ package gilmour
 import (
 	"errors"
 	"fmt"
-	"log"
 	"runtime"
 	"strings"
 	"sync"
@@ -465,39 +464,34 @@ func (self *Gilmour) publish(topic string, msg *Message) error {
 	return self.backend.Publish(topic, msg)
 }
 
-//Expose a method to handle Compositions
-func (self *Gilmour) Compose(c *Composition, m *Message, o *RequestOpts) {
-	c.do(self, m, func(ret *Message, err error) {
-		if o == nil {
-			return
-		}
-
-		fn := o.GetHandler()
-		if fn == nil {
-			return
-		}
-
-		fn(NewRequest("composition", ret), NewMessage())
-	})
+//New Parallel composition
+func (self *Gilmour) Composition() *Composition {
+	c := new(Composition)
+	c.mode = Pipe
+	c.engine = self
+	return c
 }
 
-func (self *Gilmour) AndAnd(c *Composition, m *Message, o *RequestOpts) error {
-	for _, x := range c.cmds {
-		log.Println(x)
-	}
-	return nil
+//New AndAnd Composition.
+func (self *Gilmour) AndAnd() *Composition {
+	c := new(Composition)
+	c.mode = AndAnd
+	c.engine = self
+	return c
 }
 
-func (self *Gilmour) Batch(c *Composition, m *Message, o *RequestOpts) error {
-	for _, x := range c.cmds {
-		log.Println(x)
-	}
-	return nil
+//New Batch composition
+func (self *Gilmour) Batch() *Composition {
+	c := new(Composition)
+	c.mode = Batch
+	c.engine = self
+	return c
 }
 
-func (self *Gilmour) Parallel(c *Composition, m *Message, o *RequestOpts) error {
-	for _, x := range c.cmds {
-		log.Println(x)
-	}
-	return nil
+//New Parallel composition
+func (self *Gilmour) Parallel() *Composition {
+	c := new(Composition)
+	c.mode = Parallel
+	c.engine = self
+	return c
 }

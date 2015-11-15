@@ -28,8 +28,9 @@ func (self *Message) GetData() interface{} {
 	return self.data
 }
 
-func (self *Message) Send(data interface{}) {
+func (self *Message) Send(data interface{}) *Message {
 	self.SetData(data)
+	return self
 }
 
 func (self *Message) SetData(data interface{}) *Message {
