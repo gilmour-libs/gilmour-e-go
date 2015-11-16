@@ -12,15 +12,20 @@ func makeCommand() *Command {
 }
 
 const (
-	composeOne   = "compose-one"
-	composeTwo   = "compose-two"
-	composeThree = "compose-three"
+	composeOne    = "compose-one"
+	composeTwo    = "compose-two"
+	composeThree  = "compose-three"
+	composeBadTwo = "compose-bad-two"
 )
 
 type StrMap map[string]interface{}
 
 func Setup(e *Gilmour) {
 	o := MakeHandlerOpts()
+
+	e.ReplyTo(composeBadTwo, func(r *Request, s *Message) {
+		panic("bad-two")
+	}, o)
 
 	e.ReplyTo(composeOne, func(r *Request, s *Message) {
 		req := StrMap{}
@@ -231,6 +236,111 @@ func TestComposeAndAnd(t *testing.T) {
 	}
 
 	for _, key := range []string{"input", "merge-two", "ack-two"} {
+		if _, ok := expected[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+}
+
+func TestComposeAndAndFail(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	c := engine.AndAnd()
+
+	c.AddCommand(NewCommand(composeOne))
+	c.AddCommand(NewCommand(composeBadTwo))
+	c.AddCommand(NewCommand(composeTwo))
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+		defer wg.Done()
+		if req.Code() != 500 {
+			t.Error("Request should have failed")
+		}
+
+		if len(c.cmds) != 1 {
+			t.Error("Composition should have been left with more commands.")
+		}
+	})
+
+	c.Execute(makeMessage(StrMap{"input": 1}), opts)
+
+	wg.Wait()
+}
+
+func TestComposeBatch(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	c := engine.Batch()
+
+	cmd := NewCommand(composeOne)
+	cmd.AddTransform(NewMerger(StrMap{"merge": 1}))
+	c.AddCommand(cmd)
+
+	cmd2 := NewCommand(composeTwo)
+	cmd2.AddTransform(NewMerger(StrMap{"merge-two": 1}))
+	c.AddCommand(cmd2)
+
+	expected := StrMap{}
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+		defer wg.Done()
+		req.Data(&expected)
+	})
+
+	c.Execute(makeMessage(StrMap{"input": 1}), opts)
+	wg.Wait()
+
+	for _, key := range []string{"merge", "ack-one"} {
+		if _, ok := expected[key]; ok {
+			t.Error("Must NOT have", key, "in final output")
+		}
+	}
+
+	for _, key := range []string{"input", "merge-two", "ack-two"} {
+		if _, ok := expected[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+}
+
+func TestComposeBatchWontFail(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	c := engine.Batch()
+
+	c.AddCommand(NewCommand(composeOne))
+	c.AddCommand(NewCommand(composeBadTwo))
+
+	cmd2 := NewCommand(composeTwo)
+	cmd2.AddTransform(NewMerger(StrMap{"merge-two": 1}))
+	c.AddCommand(cmd2)
+
+	expected := StrMap{}
+
+	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+		defer wg.Done()
+		if req.Code() != 200 {
+			t.Error("Request should have passed")
+		}
+
+		if len(c.cmds) != 0 {
+			t.Error("Composition should not be left with any more commands.")
+		}
+
+		req.Data(&expected)
+	})
+
+	c.Execute(makeMessage(StrMap{"input": 1}), opts)
+
+	wg.Wait()
+
+	for _, key := range []string{"merge", "ack-one"} {
+		if _, ok := expected[key]; ok {
+			t.Error("Must NOT have", key, "in final output")
+		}
+	}
+
+	for _, key := range []string{"input", "ack-two", "merge-two"} {
 		if _, ok := expected[key]; !ok {
 			t.Error("Must have", key, "in final output")
 		}

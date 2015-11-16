@@ -119,31 +119,64 @@ func (c *Composition) internal_do(m *Message, do func(*Request, *Message)) {
 	c.engine.Request(cmd.topic, msg, opts)
 }
 
+func copyReqMsg(r *Request) (*Message, error) {
+	if byts, err := r.gData.Marshal(); err != nil {
+		return nil, err
+	} else {
+		return ParseMessage(byts)
+	}
+}
+
 // Analogus to Linux x && y && z
 // Will quit at first failure.
-func (c *Composition) AndAnd(m *Message, finally chan<- *Message) {
+func (c *Composition) andand(m *Message, finally chan<- *Message) {
 	c.internal_do(m, func(r *Request, s *Message) {
+		msg, err := copyReqMsg(r)
+		if err != nil {
+			panic(err)
+		}
+
 		if len(c.cmds) == 0 {
-			msg := NewMessage().Send(map[string]interface{}{})
-			r.Data(&msg.data)
+			finally <- msg
+		} else if msg.GetCode() >= 400 {
+			//AndAnd should fail on first failure.
 			finally <- msg
 		} else {
-			c.AndAnd(m, finally)
+			c.andand(m, finally)
+		}
+	})
+}
+
+// Analogus to Linux x; y; z
+// Will not stop at any failure.
+func (c *Composition) batch(m *Message, finally chan<- *Message) {
+	c.internal_do(m, func(r *Request, s *Message) {
+		msg, err := copyReqMsg(r)
+		if err != nil {
+			panic(err)
+		}
+
+		if len(c.cmds) == 0 {
+			finally <- msg
+		} else {
+			c.batch(m, finally)
 		}
 	})
 }
 
 // Analogus to Linux x | y | z
 // Will keep going on even if something fails.
-func (c *Composition) Pipe(m *Message, finally chan<- *Message) {
+func (c *Composition) pipe(m *Message, finally chan<- *Message) {
 	c.internal_do(m, func(r *Request, s *Message) {
-		msg := NewMessage().Send(map[string]interface{}{})
-		r.Data(&msg.data)
+		msg, err := copyReqMsg(r)
+		if err != nil {
+			panic(err)
+		}
 
 		if len(c.cmds) == 0 {
 			finally <- msg
 		} else {
-			c.Pipe(msg, finally)
+			c.pipe(msg, finally)
 		}
 	})
 }
@@ -154,9 +187,11 @@ func (c *Composition) selectMode(m *Message) <-chan *Message {
 
 	switch c.mode {
 	case AndAnd:
-		c.AndAnd(m, finally)
+		c.andand(m, finally)
+	case Batch:
+		c.batch(m, finally)
 	case Pipe:
-		c.Pipe(m, finally)
+		c.pipe(m, finally)
 	default:
 		panic("Unsupported Composition mode")
 	}
