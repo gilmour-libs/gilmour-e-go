@@ -3,10 +3,10 @@ package gilmour
 import "testing"
 
 const (
-	composeOne    = "compose-one"
-	composeTwo    = "compose-two"
-	composeThree  = "compose-three"
-	composeBadTwo = "compose-bad-two"
+	topicOne    = "compose-one"
+	topicTwo    = "compose-two"
+	topicThree  = "compose-three"
+	topicBadTwo = "compose-bad-two"
 )
 
 type StrMap map[string]interface{}
@@ -14,25 +14,25 @@ type StrMap map[string]interface{}
 func Setup(e *Gilmour) {
 	o := MakeHandlerOpts()
 
-	e.ReplyTo(composeBadTwo, func(r *Request, s *Message) {
+	e.ReplyTo(topicBadTwo, func(r *Request, s *Message) {
 		panic("bad-two")
 	}, o)
 
-	e.ReplyTo(composeOne, func(r *Request, s *Message) {
+	e.ReplyTo(topicOne, func(r *Request, s *Message) {
 		req := StrMap{}
 		r.Data(&req)
 		compositionMerge(&req, &StrMap{"ack-one": "one"})
 		s.Send(req)
 	}, o)
 
-	e.ReplyTo(composeTwo, func(r *Request, s *Message) {
+	e.ReplyTo(topicTwo, func(r *Request, s *Message) {
 		req := StrMap{}
 		r.Data(&req)
 		compositionMerge(&req, &StrMap{"ack-two": "two"})
 		s.Send(req)
 	}, o)
 
-	e.ReplyTo(composeThree, func(r *Request, s *Message) {
+	e.ReplyTo(topicThree, func(r *Request, s *Message) {
 		req := StrMap{}
 		r.Data(&req)
 		compositionMerge(&req, &StrMap{"ack-three": "three"})
@@ -55,9 +55,9 @@ func TestFuncComposition(t *testing.T) {
 	key := "merge"
 	data := StrMap{"arg": 1}
 	c := NewFuncComposition(StrMap{key: 1})
-	_, err := c.Execute(makeMessage(data), engine)
-	if err != nil {
-		t.Error(err)
+	msg := c.Execute(makeMessage(data), engine)
+	if msg.GetCode() != 200 {
+		t.Error("Should not have raised Error")
 	}
 
 	if _, ok := data[key]; !ok {
@@ -69,8 +69,8 @@ func TestFuncComposition(t *testing.T) {
 func TestFuncCompositionFail(t *testing.T) {
 	data := "arg"
 	c := NewFuncComposition(StrMap{"merge": 1})
-	_, err := c.Execute(makeMessage(data), engine)
-	if err == nil {
+	msg := c.Execute(makeMessage(data), engine)
+	if msg.GetCode() == 500 {
 		t.Error("Should have raised error")
 	}
 }
@@ -78,9 +78,9 @@ func TestFuncCompositionFail(t *testing.T) {
 func TestCompositionExecute(t *testing.T) {
 
 	data := StrMap{}
-	c := NewRequestComposition(composeOne)
-	m, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	c := NewRequestComposition(topicOne)
 
+	m := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	m.Unmarshal(&data)
 
 	for _, key := range []string{"input", "ack-one"} {
@@ -93,11 +93,10 @@ func TestCompositionExecute(t *testing.T) {
 func TestCompositionMergeExecute(t *testing.T) {
 
 	data := StrMap{}
-	c := NewRequestComposition(composeOne)
+	c := NewRequestComposition(topicOne)
 	c.SetMessage(StrMap{"merge-one": 1})
 
-	m, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
-
+	m := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	m.Unmarshal(&data)
 
 	for _, key := range []string{"input", "ack-one", "merge-one"} {
@@ -113,12 +112,11 @@ func TestCompositionMergeExecute(t *testing.T) {
 func TestComposePipe(t *testing.T) {
 	c := NewPipe()
 
-	c1 := NewRequestComposition(composeOne)
+	c1 := NewRequestComposition(topicOne)
 	c1.SetMessage(StrMap{"merge": 1})
 	c.Add(c1)
 
-	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
-
+	msg := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -134,16 +132,15 @@ func TestComposePipe(t *testing.T) {
 func TestComposeComplex(t *testing.T) {
 	c := NewPipe()
 
-	c1 := NewRequestComposition(composeOne)
+	c1 := NewRequestComposition(topicOne)
 	c1.SetMessage(StrMap{"merge-one": 1})
 	c.Add(c1)
 
-	c2 := NewRequestComposition(composeTwo)
+	c2 := NewRequestComposition(topicTwo)
 	c2.SetMessage(StrMap{"merge-two": 1})
 	c.Add(c2)
 
-	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
-
+	msg := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -157,7 +154,7 @@ func TestComposeComplex(t *testing.T) {
 func TestComposeNested(t *testing.T) {
 	c1 := NewPipe()
 
-	c11 := NewRequestComposition(composeOne)
+	c11 := NewRequestComposition(topicOne)
 	c11.SetMessage(StrMap{"merge-one": 1})
 	c1.Add(c11)
 
@@ -165,13 +162,13 @@ func TestComposeNested(t *testing.T) {
 
 	c2.Add(NewFuncComposition(StrMap{"fake-two": 1}))
 
-	c21 := NewRequestComposition(composeTwo)
+	c21 := NewRequestComposition(topicTwo)
 	c21.SetMessage(StrMap{"merge-two": 1})
 	c2.Add(c21)
 
 	c1.Add(c2)
-	msg, _ := c1.Execute(makeMessage(StrMap{"input": 1}), engine)
 
+	msg := c1.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -185,19 +182,19 @@ func TestComposeNested(t *testing.T) {
 func TestComposeAndAnd(t *testing.T) {
 	c1 := NewAndAnd()
 
-	c11 := NewRequestComposition(composeOne)
+	c11 := NewRequestComposition(topicOne)
 	c11.SetMessage(StrMap{"merge-one": 1})
 	c1.Add(c11)
 
 	c2 := NewPipe()
 	c2.Add(NewFuncComposition(StrMap{"fake-two": 1}))
-	c21 := NewRequestComposition(composeTwo)
+	c21 := NewRequestComposition(topicTwo)
 	c21.SetMessage(StrMap{"merge-two": 1})
 	c2.Add(c21)
 
 	c1.Add(c2)
-	msg, _ := c1.Execute(makeMessage(StrMap{"input": 1}), engine)
 
+	msg := c1.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -217,11 +214,11 @@ func TestComposeAndAnd(t *testing.T) {
 func TestComposeAndAndFail(t *testing.T) {
 	c := NewAndAnd()
 
-	c.Add(NewRequestComposition(composeOne))
-	c.Add(NewRequestComposition(composeBadTwo))
-	c.Add(NewRequestComposition(composeTwo))
+	c.Add(NewRequestComposition(topicOne))
+	c.Add(NewRequestComposition(topicBadTwo))
+	c.Add(NewRequestComposition(topicTwo))
 
-	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	if msg.GetCode() != 500 {
 		t.Error("Request should have failed")
@@ -235,15 +232,15 @@ func TestComposeAndAndFail(t *testing.T) {
 func TestComposeBatch(t *testing.T) {
 	c := NewBatch()
 
-	c1 := NewRequestComposition(composeOne)
+	c1 := NewRequestComposition(topicOne)
 	c1.SetMessage(StrMap{"merge": 1})
 	c.Add(c1)
 
-	c2 := NewRequestComposition(composeTwo)
+	c2 := NewRequestComposition(topicTwo)
 	c2.SetMessage(StrMap{"merge-two": 1})
 	c.Add(c2)
 
-	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -263,14 +260,14 @@ func TestComposeBatch(t *testing.T) {
 func TestComposeBatchWontFail(t *testing.T) {
 	c := NewBatch()
 
-	c.Add(NewRequestComposition(composeOne))
-	c.Add(NewRequestComposition(composeBadTwo))
+	c.Add(NewRequestComposition(topicOne))
+	c.Add(NewRequestComposition(topicBadTwo))
 
-	c2 := NewRequestComposition(composeTwo)
+	c2 := NewRequestComposition(topicTwo)
 	c2.SetMessage(StrMap{"merge-two": 1})
 	c.Add(c2)
 
-	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -291,6 +288,71 @@ func TestComposeBatchWontFail(t *testing.T) {
 	for _, key := range []string{"input", "ack-two", "merge-two"} {
 		if _, ok := expected[key]; !ok {
 			t.Error("Must have", key, "in final output")
+		}
+	}
+}
+
+func TestBatchRecordOutput(t *testing.T) {
+	c := NewBatch()
+	c.Add(NewRequestComposition(topicOne))
+	c.Add(NewRequestComposition(topicTwo))
+	c.Add(NewRequestComposition(topicThree))
+
+	c.RecordOutput()
+	c.Execute(makeMessage(StrMap{"input": 1}), engine)
+
+	if len(c.GetOutput()) != 3 {
+		t.Error("Must have captured 3 outputs.")
+	}
+
+	for _, m := range c.GetOutput() {
+		expected := StrMap{}
+		if err := m.Unmarshal(&expected); err != nil {
+			t.Error("Must be valid message output")
+		} else if _, ok := expected["input"]; !ok {
+			t.Error("Must have input in final output")
+		}
+	}
+}
+
+func TestBatchBadRecord(t *testing.T) {
+	c := NewBatch()
+	c.Add(NewRequestComposition(topicOne))
+	c.Add(NewRequestComposition(topicBadTwo))
+	c.Add(NewRequestComposition(topicThree))
+
+	c.RecordOutput()
+	c.Execute(makeMessage(StrMap{"input": 1}), engine)
+
+	if len(c.GetOutput()) != 3 {
+		t.Error("Must have captured 3 outputs.")
+	}
+
+	second := c.GetOutput()[1]
+	if second.GetCode() != 500 {
+		t.Error("Should have failed with 500")
+	}
+}
+
+func TestAndAndRecordOutput(t *testing.T) {
+	c := NewAndAnd()
+	c.Add(NewRequestComposition(topicOne))
+	c.Add(NewRequestComposition(topicTwo))
+	c.Add(NewRequestComposition(topicThree))
+
+	c.RecordOutput()
+	c.Execute(makeMessage(StrMap{"input": 1}), engine)
+
+	if len(c.GetOutput()) != 3 {
+		t.Error("Must have captured 3 outputs.")
+	}
+
+	for _, m := range c.GetOutput() {
+		expected := StrMap{}
+		if err := m.Unmarshal(&expected); err != nil {
+			t.Error("Must be valid message output")
+		} else if _, ok := expected["input"]; !ok {
+			t.Error("Must have input in final output")
 		}
 	}
 }

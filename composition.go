@@ -15,7 +15,7 @@ const (
 // Common Messenger interface that allows Func Transformer or another
 // Composition.
 type Composer interface {
-	Execute(*Message, *Gilmour) (*Message, error)
+	Execute(*Message, *Gilmour) *Message
 }
 
 // Standalone Merge transformer.
@@ -27,9 +27,19 @@ type FuncComposition struct {
 	seed interface{}
 }
 
-func (hc *FuncComposition) Execute(m *Message, g *Gilmour) (*Message, error) {
+func (hc *FuncComposition) Execute(m *Message, g *Gilmour) *Message {
 	err := compositionMerge(&m.data, &hc.seed)
-	return m, err
+	if err != nil {
+		m := NewMessage()
+		m.SetCode(500)
+		m.Send(err.Error())
+	}
+
+	if m.GetCode() == 0 {
+		m.SetCode(200)
+	}
+
+	return m
 }
 
 /*
@@ -61,7 +71,7 @@ func (rc *RequestComposer) SetMessage(t interface{}) (err error) {
 	return
 }
 
-func (rc *RequestComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
+func (rc *RequestComposer) Execute(m *Message, g *Gilmour) *Message {
 	finally := make(chan *Message, 1)
 
 	if rc.message != nil {
@@ -76,7 +86,12 @@ func (rc *RequestComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
 
 	g.Request(rc.topic, m, opts)
 
-	return <-finally, nil
+	output := <-finally
+	if output.GetCode() == 0 {
+		output.SetCode(200)
+	}
+
+	return output
 }
 
 func NewRequestComposition(topic string) *RequestComposer {
@@ -91,6 +106,22 @@ func NewRequestComposition(topic string) *RequestComposer {
 type Composition struct {
 	mode         string //AndAnd, Pipe, Batch, Parallel
 	compositions []Composer
+	recordOutput bool
+	output       []*Message
+}
+
+func (c *Composition) GetOutput() []*Message {
+	return c.output
+}
+
+func (c *Composition) RecordOutput() *Composition {
+	c.recordOutput = true
+	return c
+}
+
+func (c *Composition) StopRecordOutput() *Composition {
+	c.recordOutput = false
+	return c
 }
 
 func (c *Composition) Add(cp Composer) {
@@ -98,7 +129,7 @@ func (c *Composition) Add(cp Composer) {
 }
 
 //Tail recursion over Commands, eventually writing message to requestHandler.
-func (c *Composition) do(m *Message, g *Gilmour, cb func(*Message, error)) {
+func (c *Composition) do(m *Message, g *Gilmour, cb func(*Message)) {
 	//No command left to be executed. Issue the final callback.
 	if len(c.compositions) == 0 {
 		return
@@ -119,22 +150,19 @@ func (c *Composition) do(m *Message, g *Gilmour, cb func(*Message, error)) {
 	//Update the Tail to only be left with remaining elements.
 	c.compositions = tail
 
-	//Execute the Composition and pass conrol to the caller
-	cb(cmd.Execute(msg, g))
-}
-
-func copyReqMsg(r *Request) (*Message, error) {
-	if byts, err := r.gData.Marshal(); err != nil {
-		return nil, err
-	} else {
-		return ParseMessage(byts)
+	output := cmd.Execute(msg, g)
+	if c.recordOutput {
+		c.output = append(c.output, output)
 	}
+
+	//Execute the Composition and pass conrol to the caller
+	cb(output)
 }
 
 // Analogus to Linux x && y && z
 // Will quit at first failure.
 func (c *Composition) andand(m *Message, g *Gilmour, finally chan<- *Message) {
-	c.do(m, g, func(msg *Message, e error) {
+	c.do(m, g, func(msg *Message) {
 		if len(c.compositions) == 0 {
 			finally <- msg
 		} else if msg.GetCode() >= 400 {
@@ -149,7 +177,7 @@ func (c *Composition) andand(m *Message, g *Gilmour, finally chan<- *Message) {
 // Analogus to Linux x; y; z
 // Will not stop at any failure.
 func (c *Composition) batch(m *Message, g *Gilmour, finally chan<- *Message) {
-	c.do(m, g, func(msg *Message, e error) {
+	c.do(m, g, func(msg *Message) {
 		if len(c.compositions) == 0 {
 			finally <- msg
 		} else {
@@ -161,7 +189,7 @@ func (c *Composition) batch(m *Message, g *Gilmour, finally chan<- *Message) {
 // Analogus to Linux x | y | z
 // Will keep going on even if something fails.
 func (c *Composition) pipe(m *Message, g *Gilmour, finally chan<- *Message) {
-	c.do(m, g, func(msg *Message, e error) {
+	c.do(m, g, func(msg *Message) {
 		if len(c.compositions) == 0 {
 			finally <- msg
 		} else {
@@ -208,19 +236,22 @@ func (c *Composition) Do(m *Message, g *Gilmour, o *RequestOpts) {
 
 // Transformer compliant method to be able to pass compositions as valid
 // transformations to commands.
-func (c *Composition) Execute(m *Message, g *Gilmour) (*Message, error) {
-	finally := c.selectMode(m, g)
-
+func (c *Composition) Execute(m *Message, g *Gilmour) *Message {
 	//Wait for the message to show up.
-	return <-finally, nil
+	output := <-c.selectMode(m, g)
+	if output.GetCode() == 0 {
+		output.SetCode(200)
+	}
+
+	return output
 }
 
+/*
 type CompositionOpts struct {
 	handler      Handler
 	recordOutput bool
 }
 
-/*
 //Override the ShouldConfirmSubscriber to force it to be true.
 func (self *CompositionOpts) ShouldRecordOutput() bool {
 	return self.recordOutput
