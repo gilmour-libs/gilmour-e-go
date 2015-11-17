@@ -6,16 +6,16 @@ import (
 )
 
 const (
-	AndAnd   = "andand"
-	Pipe     = "pipe"
-	Parallel = "parallel"
-	Batch    = "batch"
+	andand   = "andand"
+	pipe     = "pipe"
+	parallel = "parallel"
+	batch    = "batch"
 )
 
-// Common Messenger interface that allows Dummy Transformer or another
+// Common Messenger interface that allows Fake Transformer or another
 // Composition.
-type Transformer interface {
-	Transform(*Message) (*Message, error)
+type Composer interface {
+	Execute(*Message, *Gilmour) (*Message, error)
 }
 
 // Standalone Merge transformer.
@@ -23,79 +23,80 @@ type Transformer interface {
 // seeding it to the next command. Requires to be seeded with an interface
 // which will be applied to the previous command's output Message only if the
 // type is convertible. In case of a failure it shall raise an Error.
-type MergeTransform struct {
+type FakeComposer struct {
 	seed interface{}
 }
 
-func (ft *MergeTransform) Seed(s interface{}) *MergeTransform {
-	ft.seed = s
-	return ft
-}
-
-func (ft *MergeTransform) Transform(m *Message) (*Message, error) {
-	err := compositionMerge(&m.data, &ft.seed)
+func (hc *FakeComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
+	err := compositionMerge(&m.data, &hc.seed)
 	return m, err
 }
 
-func NewMerger(s interface{}) *MergeTransform {
-	n := new(MergeTransform)
-	n.Seed(s)
-	return n
+//Constructor for HashComposer
+func NewFakeComposer(s interface{}) *FakeComposer {
+	return &FakeComposer{s}
 }
 
 // Command represent the each command inside a Pipeline.
 // Requires a topic to send the message to, and an optional transformer.
-type Command struct {
-	topic       string
-	transformer Transformer
+type RequestComposer struct {
+	topic   string
+	message interface{}
 }
 
-func (c *Command) SetTopic(t string) (err error) {
-	if c.topic != "" {
-		err = errors.New("Cannot change the topic after its been set")
+func (rc *RequestComposer) SetMessage(t interface{}) (err error) {
+	if rc.message != nil {
+		err = errors.New("Cannot change the message after its been set")
 	} else {
-		c.topic = t
-	}
-
-	return
-}
-
-func (c *Command) AddTransform(t Transformer) (err error) {
-	if c.transformer != nil {
-		err = errors.New("Cannot change the transformation after its been set")
-	} else {
-		c.transformer = t
+		rc.message = t
 	}
 	return
 }
 
-func NewCommand(topic string) *Command {
-	x := new(Command)
-	x.SetTopic(topic)
-	return x
+func (rc *RequestComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
+	finally := make(chan *Message, 1)
+
+	if rc.message != nil {
+		if err := compositionMerge(&m.data, &rc.message); err != nil {
+			log.Println(err)
+		}
+	}
+
+	opts := NewRequestOpts().SetHandler(func(resp *Request, send *Message) {
+		finally <- resp.gData
+	})
+
+	g.Request(rc.topic, m, opts)
+
+	return <-finally, nil
+}
+
+func NewComposer(topic string) *RequestComposer {
+	rc := new(RequestComposer)
+	rc.topic = topic
+	return rc
 }
 
 // Composition refers to a group of commands and defines the manner in which
 // they are to be executed. Common Compositions are:
 // AndAnd, Batch, Pipe, Parallel. etc. Read documentation for more details.
 type Composition struct {
-	mode   string //AndAnd, Pipe, Batch, Parallel
-	engine *Gilmour
-	cmds   []*Command
+	mode         string //AndAnd, Pipe, Batch, Parallel
+	compositions []Composer
 }
 
-func (c *Composition) AddCommand(cmd *Command) {
-	c.cmds = append(c.cmds, cmd)
+func (c *Composition) Add(cp Composer) {
+	c.compositions = append(c.compositions, cp)
 }
 
 //Tail recursion over Commands, eventually writing message to requestHandler.
-func (c *Composition) internal_do(m *Message, do func(*Request, *Message)) {
+func (c *Composition) do(m *Message, g *Gilmour, cb func(*Message, error)) {
 	//No command left to be executed. Issue the final callback.
-	if len(c.cmds) == 0 {
+	if len(c.compositions) == 0 {
 		return
 	}
 
-	cmd, tail := c.cmds[0], c.cmds[1:]
+	cmd, tail := c.compositions[0], c.compositions[1:]
 
 	byts, err := m.Marshal()
 	if err != nil {
@@ -107,16 +108,11 @@ func (c *Composition) internal_do(m *Message, do func(*Request, *Message)) {
 		panic(err)
 	}
 
-	if cmd.transformer != nil {
-		if _, err := cmd.transformer.Transform(msg); err != nil {
-			log.Println(err)
-		}
-	}
-
 	//Update the Tail to only be left with remaining elements.
-	c.cmds = tail
-	opts := NewRequestOpts().SetHandler(do)
-	c.engine.Request(cmd.topic, msg, opts)
+	c.compositions = tail
+
+	//Execute the Composition and pass conrol to the caller
+	cb(cmd.Execute(msg, g))
 }
 
 func copyReqMsg(r *Request) (*Message, error) {
@@ -129,69 +125,54 @@ func copyReqMsg(r *Request) (*Message, error) {
 
 // Analogus to Linux x && y && z
 // Will quit at first failure.
-func (c *Composition) andand(m *Message, finally chan<- *Message) {
-	c.internal_do(m, func(r *Request, s *Message) {
-		msg, err := copyReqMsg(r)
-		if err != nil {
-			panic(err)
-		}
-
-		if len(c.cmds) == 0 {
+func (c *Composition) andand(m *Message, g *Gilmour, finally chan<- *Message) {
+	c.do(m, g, func(msg *Message, e error) {
+		if len(c.compositions) == 0 {
 			finally <- msg
 		} else if msg.GetCode() >= 400 {
 			//AndAnd should fail on first failure.
 			finally <- msg
 		} else {
-			c.andand(m, finally)
+			c.andand(m, g, finally)
 		}
 	})
 }
 
 // Analogus to Linux x; y; z
 // Will not stop at any failure.
-func (c *Composition) batch(m *Message, finally chan<- *Message) {
-	c.internal_do(m, func(r *Request, s *Message) {
-		msg, err := copyReqMsg(r)
-		if err != nil {
-			panic(err)
-		}
-
-		if len(c.cmds) == 0 {
+func (c *Composition) batch(m *Message, g *Gilmour, finally chan<- *Message) {
+	c.do(m, g, func(msg *Message, e error) {
+		if len(c.compositions) == 0 {
 			finally <- msg
 		} else {
-			c.batch(m, finally)
+			c.batch(m, g, finally)
 		}
 	})
 }
 
 // Analogus to Linux x | y | z
 // Will keep going on even if something fails.
-func (c *Composition) pipe(m *Message, finally chan<- *Message) {
-	c.internal_do(m, func(r *Request, s *Message) {
-		msg, err := copyReqMsg(r)
-		if err != nil {
-			panic(err)
-		}
-
-		if len(c.cmds) == 0 {
+func (c *Composition) pipe(m *Message, g *Gilmour, finally chan<- *Message) {
+	c.do(m, g, func(msg *Message, e error) {
+		if len(c.compositions) == 0 {
 			finally <- msg
 		} else {
-			c.pipe(msg, finally)
+			c.pipe(msg, g, finally)
 		}
 	})
 }
 
-func (c *Composition) selectMode(m *Message) <-chan *Message {
+func (c *Composition) selectMode(m *Message, g *Gilmour) <-chan *Message {
 	//Buffered channel to wait for the message to show up.
 	finally := make(chan *Message, 1)
 
 	switch c.mode {
-	case AndAnd:
-		c.andand(m, finally)
-	case Batch:
-		c.batch(m, finally)
-	case Pipe:
-		c.pipe(m, finally)
+	case andand:
+		c.andand(m, g, finally)
+	case batch:
+		c.batch(m, g, finally)
+	case pipe:
+		c.pipe(m, g, finally)
 	default:
 		panic("Unsupported Composition mode")
 	}
@@ -199,8 +180,8 @@ func (c *Composition) selectMode(m *Message) <-chan *Message {
 	return finally
 }
 
-func (c *Composition) Execute(m *Message, o *RequestOpts) {
-	finally := c.selectMode(m)
+func (c *Composition) Do(m *Message, g *Gilmour, o *RequestOpts) {
+	finally := c.selectMode(m, g)
 
 	go func() {
 		msg := <-finally
@@ -219,8 +200,8 @@ func (c *Composition) Execute(m *Message, o *RequestOpts) {
 
 // Transformer compliant method to be able to pass compositions as valid
 // transformations to commands.
-func (c *Composition) Transform(m *Message) (*Message, error) {
-	finally := c.selectMode(m)
+func (c *Composition) Execute(m *Message, g *Gilmour) (*Message, error) {
+	finally := c.selectMode(m, g)
 
 	//Wait for the message to show up.
 	return <-finally, nil
@@ -246,4 +227,32 @@ func (self *CompositionOpts) GetHandler() Handler {
 
 func NewCompositionOpts() *CompositionOpts {
 	return &CompositionOpts{}
+}
+
+//New Parallel composition
+func NewComposition() *Composition {
+	c := new(Composition)
+	c.mode = pipe
+	return c
+}
+
+//New AndAnd Composition.
+func NewAndAnd() *Composition {
+	c := new(Composition)
+	c.mode = andand
+	return c
+}
+
+//New Batch composition
+func NewBatch() *Composition {
+	c := new(Composition)
+	c.mode = batch
+	return c
+}
+
+//New Parallel composition
+func NewParallel() *Composition {
+	c := new(Composition)
+	c.mode = parallel
+	return c
 }

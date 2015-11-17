@@ -463,35 +463,3 @@ func (self *Gilmour) publish(topic string, msg *Message) error {
 
 	return self.backend.Publish(topic, msg)
 }
-
-//New Parallel composition
-func (self *Gilmour) Composition() *Composition {
-	c := new(Composition)
-	c.mode = Pipe
-	c.engine = self
-	return c
-}
-
-//New AndAnd Composition.
-func (self *Gilmour) AndAnd() *Composition {
-	c := new(Composition)
-	c.mode = AndAnd
-	c.engine = self
-	return c
-}
-
-//New Batch composition
-func (self *Gilmour) Batch() *Composition {
-	c := new(Composition)
-	c.mode = Batch
-	c.engine = self
-	return c
-}
-
-//New Parallel composition
-func (self *Gilmour) Parallel() *Composition {
-	c := new(Composition)
-	c.mode = Parallel
-	c.engine = self
-	return c
-}

@@ -1,15 +1,6 @@
 package gilmour
 
-import (
-	"sync"
-	"testing"
-)
-
-func makeCommand() *Command {
-	cmd := new(Command)
-	cmd.SetTopic(randSeq(5))
-	return cmd
-}
+import "testing"
 
 const (
 	composeOne    = "compose-one"
@@ -60,63 +51,59 @@ func makeMessage(data interface{}) *Message {
 }
 
 // Basic Merger which can be created and exposes a Transform method.
-func TestCompMerger(t *testing.T) {
-	override := StrMap{"merge": 1}
-	m := NewMerger(override)
-	m.Transform(makeMessage("hello"))
+func TestFakeComposition(t *testing.T) {
+	key := "merge"
+	data := StrMap{"arg": 1}
+	c := NewFakeComposer(StrMap{key: 1})
+	_, err := c.Execute(makeMessage(data), engine)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if _, ok := data[key]; !ok {
+		t.Error("Must have", key, "in final output")
+	}
 }
 
 // Transformation should fail while merging string to StrMap
-func TestCompTransformFail(t *testing.T) {
-	mt := NewMerger(StrMap{"merge": 1})
-
-	m := makeMessage("hello")
-
-	if _, err := mt.Transform(m); err == nil {
-		t.Error("Must return error. Cannot merge string and map.")
+func TestFakeCompositionFail(t *testing.T) {
+	data := "arg"
+	c := NewFakeComposer(StrMap{"merge": 1})
+	_, err := c.Execute(makeMessage(data), engine)
+	if err == nil {
+		t.Error("Should have raised error")
 	}
 }
 
-// Transformation must succeed when Seed and Message are of same type.
-func TestCompTransformMerge(t *testing.T) {
-	mt := NewMerger(StrMap{"merge": 1})
+func TestCompositionExecute(t *testing.T) {
 
-	data := StrMap{"message": 1}
-	m := makeMessage(data)
+	data := StrMap{}
+	c := NewComposer(composeOne)
+	m, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
-	if _, err := mt.Transform(m); err != nil {
-		t.Error(err)
-	} else if _, ok := data["merge"]; !ok {
-		t.Error("Must have key merge in the merged data")
+	m.Unmarshal(&data)
+
+	for _, key := range []string{"input", "ack-one"} {
+		if _, ok := data[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
 	}
 }
 
-func TestCommand(t *testing.T) {
-	cmd := new(Command)
-	cmd.SetTopic("hello-world")
+func TestCompositionMergeExecute(t *testing.T) {
 
-	if cmd == nil {
-		t.Error("Command cannot be null")
-	}
+	data := StrMap{}
+	c := NewComposer(composeOne)
+	c.SetMessage(StrMap{"merge-one": 1})
 
-	if cmd.SetTopic("hello-again") == nil {
-		t.Error("Cannot set topic twice")
-	}
-}
+	m, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
-func TestCommandTransform(t *testing.T) {
-	mt := NewMerger(StrMap{"merge": 1})
+	m.Unmarshal(&data)
 
-	cmd := new(Command)
-	cmd.SetTopic("hello-world")
-	cmd.AddTransform(mt)
-
-	if cmd == nil {
-		t.Error("Command cannot be null")
-	}
-
-	if cmd.AddTransform(mt) == nil {
-		t.Error("Cannot set transformation, once already set")
+	for _, key := range []string{"input", "ack-one", "merge-one"} {
+		if _, ok := data[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
 	}
 }
 
@@ -124,24 +111,16 @@ func TestCommandTransform(t *testing.T) {
 // Output must contain the output of the micro service morphed with the
 // transformation.
 func TestComposePipe(t *testing.T) {
-	c := engine.Composition()
+	c := NewComposition()
 
-	cmd := NewCommand(composeOne)
-	cmd.AddTransform(NewMerger(StrMap{"merge": 1}))
-	c.AddCommand(cmd)
+	c1 := NewComposer(composeOne)
+	c1.SetMessage(StrMap{"merge": 1})
+	c.Add(c1)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	expected := StrMap{}
-
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
-		defer wg.Done()
-		req.Data(&expected)
-	})
-
-	c.Execute(makeMessage(StrMap{"input": 1}), opts)
-	wg.Wait()
+	msg.Unmarshal(&expected)
 
 	if _, ok := expected["merge"]; !ok {
 		t.Error("Must have merge in final output")
@@ -153,59 +132,57 @@ func TestComposePipe(t *testing.T) {
 }
 
 func TestComposeComplex(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Add(1)
+	c := NewComposition()
 
-	expected := StrMap{}
+	c1 := NewComposer(composeOne)
+	c1.SetMessage(StrMap{"merge-one": 1})
+	c.Add(c1)
 
-	c := engine.Composition()
+	c2 := NewComposer(composeTwo)
+	c2.SetMessage(StrMap{"merge-two": 1})
+	c.Add(c2)
 
-	cmd := NewCommand(composeOne)
-	cmd.AddTransform(NewMerger(StrMap{"merge": 1}))
-	c.AddCommand(cmd)
-
-	cmd2 := NewCommand(composeTwo)
-	cmd2.AddTransform(NewMerger(StrMap{"merge-two": 1}))
-	c.AddCommand(cmd2)
-
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
-		defer wg.Done()
-		req.Data(&expected)
-	})
-
-	c.Execute(makeMessage(StrMap{"input": 1}), opts)
-
-	wg.Wait()
-
-	for _, key := range []string{"input", "merge", "ack-one", "merge-two", "ack-two"} {
-		if _, ok := expected[key]; !ok {
-			t.Error("Must have", key, "in final output")
-		}
-	}
-}
-
-func TestComposeTransform(t *testing.T) {
-	c := engine.Composition()
-
-	cmd := NewCommand(composeOne)
-	cmd.AddTransform(NewMerger(StrMap{"merge": 1}))
-	c.AddCommand(cmd)
-
-	msg, err := c.Transform(makeMessage("ok"))
-	if err != nil {
-		t.Error("Should not have raised error.")
-	}
+	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
-	for _, key := range []string{"ack-one"} {
+	for _, key := range []string{"input", "merge-one", "ack-one", "merge-two", "ack-two"} {
 		if _, ok := expected[key]; !ok {
 			t.Error("Must have", key, "in final output")
 		}
 	}
 }
 
+func TestComposeNested(t *testing.T) {
+	c1 := NewComposition()
+
+	c11 := NewComposer(composeOne)
+	c11.SetMessage(StrMap{"merge-one": 1})
+	c1.Add(c11)
+
+	c2 := NewComposition()
+
+	c2.Add(NewFakeComposer(StrMap{"fake-two": 1}))
+
+	c21 := NewComposer(composeTwo)
+	c21.SetMessage(StrMap{"merge-two": 1})
+	c2.Add(c21)
+
+	c1.Add(c2)
+	msg, _ := c1.Execute(makeMessage(StrMap{"input": 1}), engine)
+
+	expected := StrMap{}
+	msg.Unmarshal(&expected)
+
+	for _, key := range []string{"input", "merge-one", "ack-one", "fake-two", "merge-two", "ack-two"} {
+		if _, ok := expected[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+}
+
+/*
 func TestComposeAndAnd(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -346,3 +323,4 @@ func TestComposeBatchWontFail(t *testing.T) {
 		}
 	}
 }
+*/
