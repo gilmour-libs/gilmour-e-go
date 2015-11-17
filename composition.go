@@ -12,7 +12,7 @@ const (
 	batch    = "batch"
 )
 
-// Common Messenger interface that allows Fake Transformer or another
+// Common Messenger interface that allows Func Transformer or another
 // Composition.
 type Composer interface {
 	Execute(*Message, *Gilmour) (*Message, error)
@@ -23,18 +23,26 @@ type Composer interface {
 // seeding it to the next command. Requires to be seeded with an interface
 // which will be applied to the previous command's output Message only if the
 // type is convertible. In case of a failure it shall raise an Error.
-type FakeComposer struct {
+type FuncComposition struct {
 	seed interface{}
 }
 
-func (hc *FakeComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
+func (hc *FuncComposition) Execute(m *Message, g *Gilmour) (*Message, error) {
 	err := compositionMerge(&m.data, &hc.seed)
 	return m, err
 }
 
+/*
+type FunComposer func(interface{}) (*Message, error)
+
+func (hc FunComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
+	return hc(m)
+}
+*/
+
 //Constructor for HashComposer
-func NewFakeComposer(s interface{}) *FakeComposer {
-	return &FakeComposer{s}
+func NewFuncComposition(s interface{}) *FuncComposition {
+	return &FuncComposition{s}
 }
 
 // Command represent the each command inside a Pipeline.
@@ -71,7 +79,7 @@ func (rc *RequestComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
 	return <-finally, nil
 }
 
-func NewComposer(topic string) *RequestComposer {
+func NewRequestComposition(topic string) *RequestComposer {
 	rc := new(RequestComposer)
 	rc.topic = topic
 	return rc
@@ -212,6 +220,7 @@ type CompositionOpts struct {
 	recordOutput bool
 }
 
+/*
 //Override the ShouldConfirmSubscriber to force it to be true.
 func (self *CompositionOpts) ShouldRecordOutput() bool {
 	return self.recordOutput
@@ -225,12 +234,13 @@ func (self *CompositionOpts) GetHandler() Handler {
 	return self.handler
 }
 
-func NewCompositionOpts() *CompositionOpts {
+func NewPipeOpts() *CompositionOpts {
 	return &CompositionOpts{}
 }
+*/
 
 //New Parallel composition
-func NewComposition() *Composition {
+func NewPipe() *Composition {
 	c := new(Composition)
 	c.mode = pipe
 	return c

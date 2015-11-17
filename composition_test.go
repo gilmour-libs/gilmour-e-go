@@ -51,10 +51,10 @@ func makeMessage(data interface{}) *Message {
 }
 
 // Basic Merger which can be created and exposes a Transform method.
-func TestFakeComposition(t *testing.T) {
+func TestFuncComposition(t *testing.T) {
 	key := "merge"
 	data := StrMap{"arg": 1}
-	c := NewFakeComposer(StrMap{key: 1})
+	c := NewFuncComposition(StrMap{key: 1})
 	_, err := c.Execute(makeMessage(data), engine)
 	if err != nil {
 		t.Error(err)
@@ -66,9 +66,9 @@ func TestFakeComposition(t *testing.T) {
 }
 
 // Transformation should fail while merging string to StrMap
-func TestFakeCompositionFail(t *testing.T) {
+func TestFuncCompositionFail(t *testing.T) {
 	data := "arg"
-	c := NewFakeComposer(StrMap{"merge": 1})
+	c := NewFuncComposition(StrMap{"merge": 1})
 	_, err := c.Execute(makeMessage(data), engine)
 	if err == nil {
 		t.Error("Should have raised error")
@@ -78,7 +78,7 @@ func TestFakeCompositionFail(t *testing.T) {
 func TestCompositionExecute(t *testing.T) {
 
 	data := StrMap{}
-	c := NewComposer(composeOne)
+	c := NewRequestComposition(composeOne)
 	m, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	m.Unmarshal(&data)
@@ -93,7 +93,7 @@ func TestCompositionExecute(t *testing.T) {
 func TestCompositionMergeExecute(t *testing.T) {
 
 	data := StrMap{}
-	c := NewComposer(composeOne)
+	c := NewRequestComposition(composeOne)
 	c.SetMessage(StrMap{"merge-one": 1})
 
 	m, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
@@ -111,9 +111,9 @@ func TestCompositionMergeExecute(t *testing.T) {
 // Output must contain the output of the micro service morphed with the
 // transformation.
 func TestComposePipe(t *testing.T) {
-	c := NewComposition()
+	c := NewPipe()
 
-	c1 := NewComposer(composeOne)
+	c1 := NewRequestComposition(composeOne)
 	c1.SetMessage(StrMap{"merge": 1})
 	c.Add(c1)
 
@@ -132,13 +132,13 @@ func TestComposePipe(t *testing.T) {
 }
 
 func TestComposeComplex(t *testing.T) {
-	c := NewComposition()
+	c := NewPipe()
 
-	c1 := NewComposer(composeOne)
+	c1 := NewRequestComposition(composeOne)
 	c1.SetMessage(StrMap{"merge-one": 1})
 	c.Add(c1)
 
-	c2 := NewComposer(composeTwo)
+	c2 := NewRequestComposition(composeTwo)
 	c2.SetMessage(StrMap{"merge-two": 1})
 	c.Add(c2)
 
@@ -155,17 +155,17 @@ func TestComposeComplex(t *testing.T) {
 }
 
 func TestComposeNested(t *testing.T) {
-	c1 := NewComposition()
+	c1 := NewPipe()
 
-	c11 := NewComposer(composeOne)
+	c11 := NewRequestComposition(composeOne)
 	c11.SetMessage(StrMap{"merge-one": 1})
 	c1.Add(c11)
 
-	c2 := NewComposition()
+	c2 := NewPipe()
 
-	c2.Add(NewFakeComposer(StrMap{"fake-two": 1}))
+	c2.Add(NewFuncComposition(StrMap{"fake-two": 1}))
 
-	c21 := NewComposer(composeTwo)
+	c21 := NewRequestComposition(composeTwo)
 	c21.SetMessage(StrMap{"merge-two": 1})
 	c2.Add(c21)
 
@@ -182,29 +182,24 @@ func TestComposeNested(t *testing.T) {
 	}
 }
 
-/*
 func TestComposeAndAnd(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	c := engine.AndAnd()
+	c1 := NewAndAnd()
 
-	cmd := NewCommand(composeOne)
-	cmd.AddTransform(NewMerger(StrMap{"merge": 1}))
-	c.AddCommand(cmd)
+	c11 := NewRequestComposition(composeOne)
+	c11.SetMessage(StrMap{"merge-one": 1})
+	c1.Add(c11)
 
-	cmd2 := NewCommand(composeTwo)
-	cmd2.AddTransform(NewMerger(StrMap{"merge-two": 1}))
-	c.AddCommand(cmd2)
+	c2 := NewPipe()
+	c2.Add(NewFuncComposition(StrMap{"fake-two": 1}))
+	c21 := NewRequestComposition(composeTwo)
+	c21.SetMessage(StrMap{"merge-two": 1})
+	c2.Add(c21)
+
+	c1.Add(c2)
+	msg, _ := c1.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	expected := StrMap{}
-
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
-		defer wg.Done()
-		req.Data(&expected)
-	})
-
-	c.Execute(makeMessage(StrMap{"input": 1}), opts)
-	wg.Wait()
+	msg.Unmarshal(&expected)
 
 	for _, key := range []string{"merge", "ack-one"} {
 		if _, ok := expected[key]; ok {
@@ -212,7 +207,7 @@ func TestComposeAndAnd(t *testing.T) {
 		}
 	}
 
-	for _, key := range []string{"input", "merge-two", "ack-two"} {
+	for _, key := range []string{"input", "fake-two", "ack-two"} {
 		if _, ok := expected[key]; !ok {
 			t.Error("Must have", key, "in final output")
 		}
@@ -220,52 +215,37 @@ func TestComposeAndAnd(t *testing.T) {
 }
 
 func TestComposeAndAndFail(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	c := engine.AndAnd()
+	c := NewAndAnd()
 
-	c.AddCommand(NewCommand(composeOne))
-	c.AddCommand(NewCommand(composeBadTwo))
-	c.AddCommand(NewCommand(composeTwo))
+	c.Add(NewRequestComposition(composeOne))
+	c.Add(NewRequestComposition(composeBadTwo))
+	c.Add(NewRequestComposition(composeTwo))
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
-		defer wg.Done()
-		if req.Code() != 500 {
-			t.Error("Request should have failed")
-		}
+	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
-		if len(c.cmds) != 1 {
-			t.Error("Composition should have been left with more commands.")
-		}
-	})
+	if msg.GetCode() != 500 {
+		t.Error("Request should have failed")
+	}
 
-	c.Execute(makeMessage(StrMap{"input": 1}), opts)
-
-	wg.Wait()
+	if len(c.compositions) != 1 {
+		t.Error("Composition should have been left with more commands.")
+	}
 }
 
 func TestComposeBatch(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	c := engine.Batch()
+	c := NewBatch()
 
-	cmd := NewCommand(composeOne)
-	cmd.AddTransform(NewMerger(StrMap{"merge": 1}))
-	c.AddCommand(cmd)
+	c1 := NewRequestComposition(composeOne)
+	c1.SetMessage(StrMap{"merge": 1})
+	c.Add(c1)
 
-	cmd2 := NewCommand(composeTwo)
-	cmd2.AddTransform(NewMerger(StrMap{"merge-two": 1}))
-	c.AddCommand(cmd2)
+	c2 := NewRequestComposition(composeTwo)
+	c2.SetMessage(StrMap{"merge-two": 1})
+	c.Add(c2)
 
+	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
-
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
-		defer wg.Done()
-		req.Data(&expected)
-	})
-
-	c.Execute(makeMessage(StrMap{"input": 1}), opts)
-	wg.Wait()
+	msg.Unmarshal(&expected)
 
 	for _, key := range []string{"merge", "ack-one"} {
 		if _, ok := expected[key]; ok {
@@ -281,35 +261,26 @@ func TestComposeBatch(t *testing.T) {
 }
 
 func TestComposeBatchWontFail(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	c := engine.Batch()
+	c := NewBatch()
 
-	c.AddCommand(NewCommand(composeOne))
-	c.AddCommand(NewCommand(composeBadTwo))
+	c.Add(NewRequestComposition(composeOne))
+	c.Add(NewRequestComposition(composeBadTwo))
 
-	cmd2 := NewCommand(composeTwo)
-	cmd2.AddTransform(NewMerger(StrMap{"merge-two": 1}))
-	c.AddCommand(cmd2)
+	c2 := NewRequestComposition(composeTwo)
+	c2.SetMessage(StrMap{"merge-two": 1})
+	c.Add(c2)
 
+	msg, _ := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	expected := StrMap{}
+	msg.Unmarshal(&expected)
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
-		defer wg.Done()
-		if req.Code() != 200 {
-			t.Error("Request should have passed")
-		}
+	if msg.GetCode() != 200 {
+		t.Error("Request should have passed")
+	}
 
-		if len(c.cmds) != 0 {
-			t.Error("Composition should not be left with any more commands.")
-		}
-
-		req.Data(&expected)
-	})
-
-	c.Execute(makeMessage(StrMap{"input": 1}), opts)
-
-	wg.Wait()
+	if len(c.compositions) != 0 {
+		t.Error("Composition should not be left with any more commands.")
+	}
 
 	for _, key := range []string{"merge", "ack-one"} {
 		if _, ok := expected[key]; ok {
@@ -323,4 +294,3 @@ func TestComposeBatchWontFail(t *testing.T) {
 		}
 	}
 }
-*/
