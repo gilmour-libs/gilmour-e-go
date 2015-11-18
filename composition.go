@@ -11,6 +11,7 @@ const (
 	pipe     = "pipe"
 	parallel = "parallel"
 	batch    = "batch"
+	oror     = "oror"
 )
 
 // Common Messenger interface that allows Func Transformer or another
@@ -233,6 +234,17 @@ func (c *Composition) pipe(m *Message, g *Gilmour, finally chan<- *Message) {
 	})
 }
 
+// Stops at first successful operation
+func (c *Composition) oror(m *Message, g *Gilmour, finally chan<- *Message) {
+	c.do(m, g, func(msg *Message) {
+		if msg.GetCode() < 400 || len(c.Compositions()) == 0 {
+			finally <- msg
+		} else {
+			c.oror(m, g, finally)
+		}
+	})
+}
+
 func (c *Composition) parallel(m *Message, g *Gilmour, finally chan<- *Message) {
 	cmps := c.Compositions()
 	LEN := len(cmps)
@@ -272,6 +284,8 @@ func (c *Composition) selectMode(m *Message, g *Gilmour) <-chan *Message {
 		c.pipe(m, g, finally)
 	case parallel:
 		c.parallel(m, g, finally)
+	case oror:
+		c.oror(m, g, finally)
 	default:
 		panic("Unsupported Composition mode")
 	}
@@ -327,6 +341,12 @@ func NewAndAnd() *Composition {
 func NewBatch() *Composition {
 	c := new(Composition)
 	c.mode = batch
+	return c
+}
+
+func NewOrOr() *Composition {
+	c := new(Composition)
+	c.mode = oror
 	return c
 }
 

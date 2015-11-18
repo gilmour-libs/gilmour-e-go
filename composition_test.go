@@ -362,6 +362,31 @@ func TestAndAndRecordOutput(t *testing.T) {
 	}
 }
 
+func TestOrOr(t *testing.T) {
+	c := NewOrOr()
+
+	c.Add(NewRequestComposition(topicBadTwo))
+	c.Add(NewRequestComposition(topicOne))
+	c.Add(NewRequestComposition(topicThree))
+
+	msg := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	expected := StrMap{}
+	msg.Unmarshal(&expected)
+
+	for _, key := range []string{"ack-three"} {
+		if _, ok := expected[key]; ok {
+			t.Error("Must NOT have", key, "in final output")
+		}
+	}
+
+	for _, key := range []string{"input", "ack-one"} {
+		if _, ok := expected[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+
+}
+
 func TestParallel(t *testing.T) {
 	c := NewParallel()
 	c1 := NewRequestComposition(topicOne)
@@ -418,5 +443,4 @@ func TestParallel(t *testing.T) {
 			t.Error("Must have", key, "in final output")
 		}
 	}
-
 }
