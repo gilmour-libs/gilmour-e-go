@@ -3,6 +3,7 @@ package gilmour
 import (
 	"errors"
 	"log"
+	"sync"
 )
 
 const (
@@ -25,6 +26,20 @@ type Composer interface {
 // type is convertible. In case of a failure it shall raise an Error.
 type FuncComposition struct {
 	seed interface{}
+}
+
+func copyMessage(m *Message) *Message {
+	byts, err := m.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	msg, err := ParseMessage(byts)
+	if err != nil {
+		panic(err)
+	}
+
+	return msg
 }
 
 func (hc *FuncComposition) Execute(m *Message, g *Gilmour) *Message {
@@ -104,58 +119,78 @@ func NewRequestComposition(topic string) *RequestComposer {
 // they are to be executed. Common Compositions are:
 // AndAnd, Batch, Pipe, Parallel. etc. Read documentation for more details.
 type Composition struct {
+	sync.RWMutex
 	mode         string //AndAnd, Pipe, Batch, Parallel
 	compositions []Composer
 	recordOutput bool
 	output       []*Message
 }
 
+//Get the output if they were previously recorded, or of a Parallel composition
 func (c *Composition) GetOutput() []*Message {
+	c.RLock()
+	defer c.RUnlock()
 	return c.output
 }
 
+//Get the list of compositions. Has inbuilt locking.
+func (c *Composition) Compositions() []Composer {
+	c.RLock()
+	defer c.RUnlock()
+	return c.compositions
+}
+
+//Should the output be recorded? Mostly used in AndAnd and Batch.
 func (c *Composition) RecordOutput() *Composition {
+	c.Lock()
+	defer c.Unlock()
+
 	c.recordOutput = true
 	return c
 }
 
-func (c *Composition) StopRecordOutput() *Composition {
-	c.recordOutput = false
-	return c
+// Add a new composer to the List.
+func (c *Composition) Add(cp Composer) {
+	c.Lock()
+	defer c.Unlock()
+	c.compositions = append(c.compositions, cp)
 }
 
-func (c *Composition) Add(cp Composer) {
-	c.compositions = append(c.compositions, cp)
+//Pop the first composer. Useful for Tail recursion.
+func (c *Composition) LPop() Composer {
+	cmps := c.Compositions()
+	c.Lock()
+	defer c.Unlock()
+
+	cmd, tail := cmps[0], cmps[1:]
+	c.compositions = tail
+	return cmd
+}
+
+//Save the output message to array of outputs
+func (c *Composition) SaveOutput(m *Message) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.output = append(c.output, m)
 }
 
 //Tail recursion over Commands, eventually writing message to requestHandler.
 func (c *Composition) do(m *Message, g *Gilmour, cb func(*Message)) {
 	//No command left to be executed. Issue the final callback.
-	if len(c.compositions) == 0 {
+	if len(c.Compositions()) == 0 {
 		return
 	}
 
-	cmd, tail := c.compositions[0], c.compositions[1:]
-
-	byts, err := m.Marshal()
-	if err != nil {
-		panic(err)
-	}
-
-	msg, err := ParseMessage(byts)
-	if err != nil {
-		panic(err)
-	}
-
 	//Update the Tail to only be left with remaining elements.
-	c.compositions = tail
-
-	output := cmd.Execute(msg, g)
-	if c.recordOutput {
-		c.output = append(c.output, output)
-	}
+	cmd := c.LPop()
 
 	//Execute the Composition and pass conrol to the caller
+	output := cmd.Execute(copyMessage(m), g)
+	if c.recordOutput {
+		c.SaveOutput(output)
+	}
+
 	cb(output)
 }
 
@@ -163,7 +198,7 @@ func (c *Composition) do(m *Message, g *Gilmour, cb func(*Message)) {
 // Will quit at first failure.
 func (c *Composition) andand(m *Message, g *Gilmour, finally chan<- *Message) {
 	c.do(m, g, func(msg *Message) {
-		if len(c.compositions) == 0 {
+		if len(c.Compositions()) == 0 {
 			finally <- msg
 		} else if msg.GetCode() >= 400 {
 			//AndAnd should fail on first failure.
@@ -178,7 +213,7 @@ func (c *Composition) andand(m *Message, g *Gilmour, finally chan<- *Message) {
 // Will not stop at any failure.
 func (c *Composition) batch(m *Message, g *Gilmour, finally chan<- *Message) {
 	c.do(m, g, func(msg *Message) {
-		if len(c.compositions) == 0 {
+		if len(c.Compositions()) == 0 {
 			finally <- msg
 		} else {
 			c.batch(m, g, finally)
@@ -190,12 +225,38 @@ func (c *Composition) batch(m *Message, g *Gilmour, finally chan<- *Message) {
 // Will keep going on even if something fails.
 func (c *Composition) pipe(m *Message, g *Gilmour, finally chan<- *Message) {
 	c.do(m, g, func(msg *Message) {
-		if len(c.compositions) == 0 {
+		if len(c.Compositions()) == 0 {
 			finally <- msg
 		} else {
 			c.pipe(msg, g, finally)
 		}
 	})
+}
+
+func (c *Composition) parallel(m *Message, g *Gilmour, finally chan<- *Message) {
+	cmps := c.Compositions()
+	LEN := len(cmps)
+	var mutex = &sync.Mutex{}
+	var wg sync.WaitGroup
+
+	outstack := make([]*Message, LEN)
+
+	for ix, cmd := range cmps {
+		wg.Add(1)
+		go func(cmd Composer, ix int) {
+			defer wg.Done()
+			output := cmd.Execute(copyMessage(m), g)
+
+			mutex.Lock()
+			outstack[ix] = output
+			mutex.Unlock()
+			log.Println(output, ix)
+		}(cmd, ix)
+	}
+
+	wg.Wait()
+	c.output = outstack
+	finally <- outstack[LEN-1]
 }
 
 func (c *Composition) selectMode(m *Message, g *Gilmour) <-chan *Message {
@@ -209,6 +270,8 @@ func (c *Composition) selectMode(m *Message, g *Gilmour) <-chan *Message {
 		c.batch(m, g, finally)
 	case pipe:
 		c.pipe(m, g, finally)
+	case parallel:
+		c.parallel(m, g, finally)
 	default:
 		panic("Unsupported Composition mode")
 	}
@@ -246,31 +309,7 @@ func (c *Composition) Execute(m *Message, g *Gilmour) *Message {
 	return output
 }
 
-/*
-type CompositionOpts struct {
-	handler      Handler
-	recordOutput bool
-}
-
-//Override the ShouldConfirmSubscriber to force it to be true.
-func (self *CompositionOpts) ShouldRecordOutput() bool {
-	return self.recordOutput
-}
-
-func (self *CompositionOpts) SetHandler(h Handler) {
-	self.handler = h
-}
-
-func (self *CompositionOpts) GetHandler() Handler {
-	return self.handler
-}
-
-func NewPipeOpts() *CompositionOpts {
-	return &CompositionOpts{}
-}
-*/
-
-//New Parallel composition
+//New Pipe composition
 func NewPipe() *Composition {
 	c := new(Composition)
 	c.mode = pipe
@@ -295,5 +334,6 @@ func NewBatch() *Composition {
 func NewParallel() *Composition {
 	c := new(Composition)
 	c.mode = parallel
+	c.recordOutput = true
 	return c
 }

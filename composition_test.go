@@ -1,6 +1,9 @@
 package gilmour
 
-import "testing"
+import (
+	"log"
+	"testing"
+)
 
 const (
 	topicOne    = "compose-one"
@@ -293,12 +296,12 @@ func TestComposeBatchWontFail(t *testing.T) {
 }
 
 func TestBatchRecordOutput(t *testing.T) {
-	c := NewBatch()
+	c := NewBatch().RecordOutput()
+
 	c.Add(NewRequestComposition(topicOne))
 	c.Add(NewRequestComposition(topicTwo))
 	c.Add(NewRequestComposition(topicThree))
 
-	c.RecordOutput()
 	c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	if len(c.GetOutput()) != 3 {
@@ -316,12 +319,12 @@ func TestBatchRecordOutput(t *testing.T) {
 }
 
 func TestBatchBadRecord(t *testing.T) {
-	c := NewBatch()
+	c := NewBatch().RecordOutput()
+
 	c.Add(NewRequestComposition(topicOne))
 	c.Add(NewRequestComposition(topicBadTwo))
 	c.Add(NewRequestComposition(topicThree))
 
-	c.RecordOutput()
 	c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	if len(c.GetOutput()) != 3 {
@@ -335,13 +338,15 @@ func TestBatchBadRecord(t *testing.T) {
 }
 
 func TestAndAndRecordOutput(t *testing.T) {
-	c := NewAndAnd()
+	c := NewAndAnd().RecordOutput()
+
 	c.Add(NewRequestComposition(topicOne))
 	c.Add(NewRequestComposition(topicTwo))
 	c.Add(NewRequestComposition(topicThree))
 
-	c.RecordOutput()
 	c.Execute(makeMessage(StrMap{"input": 1}), engine)
+
+	log.Println(c.GetOutput())
 
 	if len(c.GetOutput()) != 3 {
 		t.Error("Must have captured 3 outputs.")
@@ -355,4 +360,63 @@ func TestAndAndRecordOutput(t *testing.T) {
 			t.Error("Must have input in final output")
 		}
 	}
+}
+
+func TestParallel(t *testing.T) {
+	c := NewParallel()
+	c1 := NewRequestComposition(topicOne)
+	c1.SetMessage(StrMap{"merge-one": 1})
+
+	c2 := NewRequestComposition(topicTwo)
+	c2.SetMessage(StrMap{"merge-two": 1})
+
+	c3 := NewRequestComposition(topicThree)
+	c3.SetMessage(StrMap{"merge-three": 1})
+
+	c.Add(c1)
+	c.Add(c2)
+	c.Add(c3)
+
+	msg := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+
+	expected := StrMap{}
+	msg.Unmarshal(&expected)
+
+	for _, key := range []string{"input", "ack-three", "merge-three"} {
+		if _, ok := expected[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+
+	out := c.GetOutput()
+	if len(out) != 3 {
+		t.Error("Must have captured 3 outputs.")
+	}
+
+	log.Println(out)
+
+	first := StrMap{}
+	out[0].Unmarshal(&first)
+	for _, key := range []string{"input", "ack-one", "merge-one"} {
+		if _, ok := first[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+
+	second := StrMap{}
+	out[1].Unmarshal(&second)
+	for _, key := range []string{"input", "ack-two", "merge-two"} {
+		if _, ok := second[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+
+	third := StrMap{}
+	out[2].Unmarshal(&third)
+	for _, key := range []string{"input", "ack-three", "merge-three"} {
+		if _, ok := third[key]; !ok {
+			t.Error("Must have", key, "in final output")
+		}
+	}
+
 }
