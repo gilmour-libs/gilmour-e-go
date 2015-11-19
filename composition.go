@@ -160,8 +160,18 @@ func (c *composition) lpop() Composer {
 	c.Lock()
 	defer c.Unlock()
 
-	cmd, tail := cmps[0], cmps[1:]
-	c._compositions = tail
+	if len(cmps) == 0 {
+		return nil
+	}
+
+	cmd := cmps[0]
+
+	if len(cmps) > 1 {
+		c._compositions = cmps[1:]
+	} else {
+		c._compositions = []Composer{}
+	}
+
 	return cmd
 }
 
@@ -197,52 +207,32 @@ func (c *recordableComposition) makeMessage(data interface{}) *Message {
 	return m
 }
 
-/*
-func (c *composition) parallel(m *Message, g *Gilmour, finally chan<- *Message) {
-	cmps := c.compositions()
-	LEN := len(cmps)
-	var mutex = &sync.Mutex{}
-	var wg sync.WaitGroup
-
-	outstack := make([]*Message, LEN)
-
-	for ix, cmd := range cmps {
-		wg.Add(1)
-		go func(cmd Composer, ix int) {
-			defer wg.Done()
-			output := cmd.Execute(copyMessage(m), g)
-
-			mutex.Lock()
-			outstack[ix] = output
-			mutex.Unlock()
-			log.Println(output, ix)
-		}(cmd, ix)
+func (c *recordableComposition) makeChan() (chan *Message, *sync.WaitGroup) {
+	var LEN int
+	if c.isRecorded() {
+		LEN = len(c.compositions())
+	} else {
+		LEN = 1
 	}
 
-	wg.Wait()
-	c.output = outstack
-	finally <- outstack[LEN-1]
+	var wg sync.WaitGroup
+	wg.Add(len(c.compositions()))
+
+	f := make(chan *Message, LEN)
+
+	//Spin up a goroutine to close the finally channel, when all
+	//commands in the composition are done sending their Messages.
+	//This is crucial, for the client may be looping over the output channel
+	//and any failure to close this chnnel could leave them blocked infinitely.
+	if c.isRecorded() {
+		go func(wg *sync.WaitGroup) {
+			wg.Wait()
+			close(f)
+		}(&wg)
+	}
+
+	return f, &wg
 }
-
-func (c *composition) Do(m *Message, g *Gilmour, o *RequestOpts) {
-	finally := make(chan *Message, 1)
-	c.Execute(m, g, finally)
-
-	go func() {
-		msg := <-finally
-		if o == nil {
-			return
-		}
-
-		fn := o.GetHandler()
-		if fn == nil {
-			return
-		}
-
-		fn(NewRequest("composition", msg), NewMessage())
-	}()
-}
-*/
 
 type recfunc func(recfunc, *Message, *Gilmour, chan<- *Message)
 
@@ -272,12 +262,11 @@ func (c *PipeComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 }
 
 type AndAndComposer struct {
-	recordableComposition
+	composition
 }
 
 func (c *AndAndComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 	f := outChan()
-	outstack := []*Message{}
 
 	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
 		input := copyMessage(m)
@@ -286,15 +275,9 @@ func (c *AndAndComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 
 		go func() {
 			output := <-finally
-			if c.isRecorded() {
-				outstack = append(outstack, output)
-			}
+
 			if len(c.compositions()) == 0 || output.GetCode() >= 400 {
-				if c.isRecorded() {
-					f <- c.makeMessage(outstack)
-				} else {
-					f <- output
-				}
+				f <- output
 			} else {
 				do(do, m, g, f)
 			}
@@ -336,8 +319,7 @@ type BatchComposer struct {
 }
 
 func (c *BatchComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
-	f := outChan()
-	outstack := []*Message{}
+	f, wg := c.makeChan()
 
 	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
 		input := copyMessage(m)
@@ -345,19 +327,21 @@ func (c *BatchComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 		finally := cmd.Execute(input, g)
 
 		go func() {
+			defer wg.Done()
 			output := <-finally
+
 			if c.isRecorded() {
-				outstack = append(outstack, output)
+				f <- output
 			}
+
 			if len(c.compositions()) == 0 {
-				if c.isRecorded() {
-					f <- c.makeMessage(outstack)
-				} else {
+				if !c.isRecorded() {
 					f <- output
 				}
 			} else {
 				do(do, m, g, f)
 			}
+
 		}()
 	}
 
@@ -370,35 +354,32 @@ type ParallelComposer struct {
 }
 
 func (c *ParallelComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
-	f := outChan()
+	f, wg := c.makeChan()
 
-	var wg sync.WaitGroup
+	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+		input := copyMessage(m)
 
-	mutex := &sync.Mutex{}
-	cmps := c.compositions()
-
-	outstack := make([]*Message, len(cmps))
-
-	for ix, cmd := range cmps {
-		wg.Add(1)
-		go func(cmd Composer, ix int) {
+		go func(c *ParallelComposer) {
 			defer wg.Done()
-			output := <-cmd.Execute(copyMessage(m), g)
+			cmd := c.lpop()
+			output := <-cmd.Execute(input, g)
 
-			mutex.Lock()
-			outstack[ix] = output
-			mutex.Unlock()
+			if c.isRecorded() {
+				f <- output
+			}
 
-		}(cmd, ix)
+			if len(c.compositions()) == 0 {
+				if !c.isRecorded() {
+					f <- output
+				}
+			} else {
+				do(do, m, g, f)
+			}
+
+		}(c)
 	}
 
-	go func() {
-		wg.Wait()
-		log.Println(c.makeMessage(outstack))
-		log.Println(outstack)
-		f <- c.makeMessage(outstack)
-	}()
-
+	do(do, m, g, f)
 	return f
 }
 

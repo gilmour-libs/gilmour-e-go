@@ -20,55 +20,55 @@ type Message struct {
 	sync.Mutex
 }
 
-func (self *Message) StringData() ([]byte, error) {
-	return json.Marshal(self.data)
+func (m *Message) StringData() ([]byte, error) {
+	return json.Marshal(m.data)
 }
 
-func (self *Message) GetData() interface{} {
-	return self.data
+func (m *Message) GetData() interface{} {
+	return m.data
 }
 
-func (self *Message) Send(data interface{}) *Message {
-	self.SetData(data)
-	return self
+func (m *Message) Send(data interface{}) *Message {
+	m.SetData(data)
+	return m
 }
 
-func (self *Message) SetData(data interface{}) *Message {
-	self.Lock()
-	defer self.Unlock()
+func (m *Message) SetData(data interface{}) *Message {
+	m.Lock()
+	defer m.Unlock()
 
-	if self.data != nil {
+	if m.data != nil {
 		panic("Cannot rewrite data for Message.")
 	}
 
-	self.data = data
-	return self
+	m.data = data
+	return m
 }
 
-func (self *Message) GetCode() int {
-	return self.code
+func (m *Message) GetCode() int {
+	return m.code
 }
 
-func (self *Message) SetCode(code int) *Message {
-	self.code = code
-	return self
+func (m *Message) SetCode(code int) *Message {
+	m.code = code
+	return m
 }
 
-func (self *Message) GetSender() string {
-	return self.sender
+func (m *Message) GetSender() string {
+	return m.sender
 }
 
-func (self *Message) SetSender(sender string) *Message {
-	self.sender = sender
-	return self
+func (m *Message) SetSender(sender string) *Message {
+	m.sender = sender
+	return m
 }
 
-func (self *Message) Marshal() ([]byte, error) {
-	return json.Marshal(pubMsg{self.data, self.code, self.sender})
+func (m *Message) Marshal() ([]byte, error) {
+	return json.Marshal(pubMsg{m.data, m.code, m.sender})
 }
 
-func (self *Message) Unmarshal(t interface{}) error {
-	if byts, err := self.StringData(); err != nil {
+func (m *Message) Unmarshal(t interface{}) error {
+	if byts, err := m.StringData(); err != nil {
 		return err
 	} else {
 		return json.Unmarshal(byts, t)

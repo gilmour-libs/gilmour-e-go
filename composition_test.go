@@ -273,16 +273,16 @@ func TestBatchRecordOutput(t *testing.T) {
 	)
 	c.RecordOutput()
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	f := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
 	out := []*Message{}
-	msg.Unmarshal(&out)
+	for msg := range f {
+		out = append(out, msg)
+	}
 
 	if len(out) != 3 {
 		t.Error("Must have captured 3 outputs.")
 	}
-
-	log.Println(msg.data)
 
 	for _, m := range out {
 		expected := StrMap{}
@@ -295,51 +295,30 @@ func TestBatchRecordOutput(t *testing.T) {
 	}
 }
 
-/*
 func TestBatchBadRecord(t *testing.T) {
-	c := NewBatch().RecordOutput()
+	c := NewBatch(
+		NewRequestComposition(topicOne),
+		NewRequestComposition(topicBadTwo),
+		NewRequestComposition(topicThree),
+	)
+	c.RecordOutput()
 
-	c.Add(NewRequestComposition(topicOne))
-	c.Add(NewRequestComposition(topicBadTwo))
-	c.Add(NewRequestComposition(topicThree))
+	f := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 
-	c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	out := []*Message{}
+	for msg := range f {
+		out = append(out, msg)
+	}
 
-	if len(c.GetOutput()) != 3 {
+	if len(out) != 3 {
 		t.Error("Must have captured 3 outputs.")
 	}
 
-	second := c.GetOutput()[1]
+	second := out[1]
 	if second.GetCode() != 500 {
 		t.Error("Should have failed with 500")
 	}
 }
-
-func TestAndAndRecordOutput(t *testing.T) {
-	c := NewAndAnd().RecordOutput()
-
-	c.Add(NewRequestComposition(topicOne))
-	c.Add(NewRequestComposition(topicTwo))
-	c.Add(NewRequestComposition(topicThree))
-
-	c.Execute(makeMessage(StrMap{"input": 1}), engine)
-
-	log.Println(c.GetOutput())
-
-	if len(c.GetOutput()) != 3 {
-		t.Error("Must have captured 3 outputs.")
-	}
-
-	for _, m := range c.GetOutput() {
-		expected := StrMap{}
-		if err := m.Unmarshal(&expected); err != nil {
-			t.Error("Must be valid message output")
-		} else if _, ok := expected["input"]; !ok {
-			t.Error("Must have input in final output")
-		}
-	}
-}
-*/
 
 func TestOrOr(t *testing.T) {
 	c := NewOrOr(
@@ -373,10 +352,11 @@ func TestParallel(t *testing.T) {
 		NewRequestComposition(topicThree).With(StrMap{"merge-three": 1}),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
-
+	f := c.Execute(makeMessage(StrMap{"input": 1}), engine)
 	out := []*Message{}
-	msg.Unmarshal(&out)
+	for msg := range f {
+		out = append(out, msg)
+	}
 
 	if len(out) != 3 {
 		t.Error("Must have captured 3 outputs.")
