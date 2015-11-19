@@ -1,7 +1,6 @@
 package gilmour
 
 import (
-	"errors"
 	"log"
 	"sync"
 )
@@ -15,9 +14,9 @@ const (
 )
 
 // Common Messenger interface that allows Func Transformer or another
-// Composition.
+// composition.
 type Composer interface {
-	Execute(*Message, *Gilmour) *Message
+	Execute(*Message, *Gilmour) <-chan *Message
 }
 
 // Standalone Merge transformer.
@@ -43,7 +42,11 @@ func copyMessage(m *Message) *Message {
 	return msg
 }
 
-func (hc *FuncComposition) Execute(m *Message, g *Gilmour) *Message {
+func outChan() chan *Message {
+	return make(chan *Message, 1)
+}
+
+func (hc *FuncComposition) Execute(m *Message, g *Gilmour) <-chan *Message {
 	err := compositionMerge(&m.data, &hc.seed)
 	if err != nil {
 		m := NewMessage()
@@ -55,7 +58,9 @@ func (hc *FuncComposition) Execute(m *Message, g *Gilmour) *Message {
 		m.SetCode(200)
 	}
 
-	return m
+	finally := outChan()
+	finally <- m
+	return finally
 }
 
 /*
@@ -78,36 +83,33 @@ type RequestComposer struct {
 	message interface{}
 }
 
-func (rc *RequestComposer) SetMessage(t interface{}) (err error) {
+func (rc *RequestComposer) With(t interface{}) *RequestComposer {
 	if rc.message != nil {
-		err = errors.New("Cannot change the message after its been set")
-	} else {
-		rc.message = t
+		panic("Cannot change the message after its been set")
 	}
-	return
+
+	rc.message = t
+	return rc
 }
 
-func (rc *RequestComposer) Execute(m *Message, g *Gilmour) *Message {
-	finally := make(chan *Message, 1)
-
+func (rc *RequestComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 	if rc.message != nil {
 		if err := compositionMerge(&m.data, &rc.message); err != nil {
 			log.Println(err)
 		}
 	}
 
+	finally := outChan()
+
 	opts := NewRequestOpts().SetHandler(func(resp *Request, send *Message) {
+		if resp.gData.GetCode() == 0 {
+			resp.gData.SetCode(200)
+		}
 		finally <- resp.gData
 	})
 
 	g.Request(rc.topic, m, opts)
-
-	output := <-finally
-	if output.GetCode() == 0 {
-		output.SetCode(200)
-	}
-
-	return output
+	return finally
 }
 
 func NewRequestComposition(topic string) *RequestComposer {
@@ -116,137 +118,88 @@ func NewRequestComposition(topic string) *RequestComposer {
 	return rc
 }
 
-// Composition refers to a group of commands and defines the manner in which
-// they are to be executed. Common Compositions are:
+// composition refers to a group of commands and defines the manner in which
+// they are to be executed. Common compositions are:
 // AndAnd, Batch, Pipe, Parallel. etc. Read documentation for more details.
-type Composition struct {
+type composition struct {
 	sync.RWMutex
-	mode         string //AndAnd, Pipe, Batch, Parallel
-	compositions []Composer
-	recordOutput bool
-	output       []*Message
+	_compositions []Composer
+	output        []*Message
 }
 
 //Get the output if they were previously recorded, or of a Parallel composition
-func (c *Composition) GetOutput() []*Message {
+func (c *composition) getOutput() []*Message {
 	c.RLock()
 	defer c.RUnlock()
+
 	return c.output
 }
 
 //Get the list of compositions. Has inbuilt locking.
-func (c *Composition) Compositions() []Composer {
+func (c *composition) compositions() []Composer {
 	c.RLock()
 	defer c.RUnlock()
-	return c.compositions
-}
 
-//Should the output be recorded? Mostly used in AndAnd and Batch.
-func (c *Composition) RecordOutput() *Composition {
-	c.Lock()
-	defer c.Unlock()
-
-	c.recordOutput = true
-	return c
+	return c._compositions
 }
 
 // Add a new composer to the List.
-func (c *Composition) Add(cp Composer) {
+func (c *composition) add(cmds ...Composer) {
 	c.Lock()
 	defer c.Unlock()
-	c.compositions = append(c.compositions, cp)
+
+	for _, cp := range cmds {
+		c._compositions = append(c._compositions, cp)
+	}
 }
 
 //Pop the first composer. Useful for Tail recursion.
-func (c *Composition) LPop() Composer {
-	cmps := c.Compositions()
+func (c *composition) lpop() Composer {
+	cmps := c.compositions()
+
 	c.Lock()
 	defer c.Unlock()
 
 	cmd, tail := cmps[0], cmps[1:]
-	c.compositions = tail
+	c._compositions = tail
 	return cmd
 }
 
 //Save the output message to array of outputs
-func (c *Composition) SaveOutput(m *Message) {
+func (c *composition) saveOutput(m *Message) {
 	c.Lock()
 	defer c.Unlock()
 
 	c.output = append(c.output, m)
 }
 
-//Tail recursion over Commands, eventually writing message to requestHandler.
-func (c *Composition) do(m *Message, g *Gilmour, cb func(*Message)) {
-	//No command left to be executed. Issue the final callback.
-	if len(c.Compositions()) == 0 {
-		return
-	}
-
-	//Update the Tail to only be left with remaining elements.
-	cmd := c.LPop()
-
-	//Execute the Composition and pass conrol to the caller
-	output := cmd.Execute(copyMessage(m), g)
-	if c.recordOutput {
-		c.SaveOutput(output)
-	}
-
-	cb(output)
+type recordableComposition struct {
+	composition
+	record bool
 }
 
-// Analogus to Linux x && y && z
-// Will quit at first failure.
-func (c *Composition) andand(m *Message, g *Gilmour, finally chan<- *Message) {
-	c.do(m, g, func(msg *Message) {
-		if len(c.Compositions()) == 0 {
-			finally <- msg
-		} else if msg.GetCode() >= 400 {
-			//AndAnd should fail on first failure.
-			finally <- msg
-		} else {
-			c.andand(m, g, finally)
-		}
-	})
+func (c *recordableComposition) isRecorded() bool {
+	return c.record
 }
 
-// Analogus to Linux x; y; z
-// Will not stop at any failure.
-func (c *Composition) batch(m *Message, g *Gilmour, finally chan<- *Message) {
-	c.do(m, g, func(msg *Message) {
-		if len(c.Compositions()) == 0 {
-			finally <- msg
-		} else {
-			c.batch(m, g, finally)
-		}
-	})
+//Should the output be recorded? Mostly used in AndAnd and Batch.
+func (c *recordableComposition) RecordOutput() {
+	c.Lock()
+	defer c.Unlock()
+
+	c.record = true
 }
 
-// Analogus to Linux x | y | z
-// Will keep going on even if something fails.
-func (c *Composition) pipe(m *Message, g *Gilmour, finally chan<- *Message) {
-	c.do(m, g, func(msg *Message) {
-		if len(c.Compositions()) == 0 {
-			finally <- msg
-		} else {
-			c.pipe(msg, g, finally)
-		}
-	})
+func (c *recordableComposition) makeMessage(data interface{}) *Message {
+	m := NewMessage()
+	m.Send(data)
+	m.SetCode(200)
+	return m
 }
 
-// Stops at first successful operation
-func (c *Composition) oror(m *Message, g *Gilmour, finally chan<- *Message) {
-	c.do(m, g, func(msg *Message) {
-		if msg.GetCode() < 400 || len(c.Compositions()) == 0 {
-			finally <- msg
-		} else {
-			c.oror(m, g, finally)
-		}
-	})
-}
-
-func (c *Composition) parallel(m *Message, g *Gilmour, finally chan<- *Message) {
-	cmps := c.Compositions()
+/*
+func (c *composition) parallel(m *Message, g *Gilmour, finally chan<- *Message) {
+	cmps := c.compositions()
 	LEN := len(cmps)
 	var mutex = &sync.Mutex{}
 	var wg sync.WaitGroup
@@ -271,30 +224,9 @@ func (c *Composition) parallel(m *Message, g *Gilmour, finally chan<- *Message) 
 	finally <- outstack[LEN-1]
 }
 
-func (c *Composition) selectMode(m *Message, g *Gilmour) <-chan *Message {
-	//Buffered channel to wait for the message to show up.
+func (c *composition) Do(m *Message, g *Gilmour, o *RequestOpts) {
 	finally := make(chan *Message, 1)
-
-	switch c.mode {
-	case andand:
-		c.andand(m, g, finally)
-	case batch:
-		c.batch(m, g, finally)
-	case pipe:
-		c.pipe(m, g, finally)
-	case parallel:
-		c.parallel(m, g, finally)
-	case oror:
-		c.oror(m, g, finally)
-	default:
-		panic("Unsupported Composition mode")
-	}
-
-	return finally
-}
-
-func (c *Composition) Do(m *Message, g *Gilmour, o *RequestOpts) {
-	finally := c.selectMode(m, g)
+	c.Execute(m, g, finally)
 
 	go func() {
 		msg := <-finally
@@ -310,50 +242,197 @@ func (c *Composition) Do(m *Message, g *Gilmour, o *RequestOpts) {
 		fn(NewRequest("composition", msg), NewMessage())
 	}()
 }
+*/
 
-// Transformer compliant method to be able to pass compositions as valid
-// transformations to commands.
-func (c *Composition) Execute(m *Message, g *Gilmour) *Message {
-	//Wait for the message to show up.
-	output := <-c.selectMode(m, g)
-	if output.GetCode() == 0 {
-		output.SetCode(200)
+type recfunc func(recfunc, *Message, *Gilmour, chan<- *Message)
+
+type PipeComposer struct {
+	composition
+}
+
+func (c *PipeComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+	f := outChan()
+
+	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+		cmd := c.lpop()
+		finally := cmd.Execute(m, g)
+
+		go func() {
+			output := <-finally
+			if len(c.compositions()) == 0 || output.GetCode() >= 400 {
+				f <- output
+			} else {
+				do(do, output, g, f)
+			}
+		}()
 	}
 
-	return output
+	do(do, copyMessage(m), g, f)
+	return f
+}
+
+type AndAndComposer struct {
+	recordableComposition
+}
+
+func (c *AndAndComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+	f := outChan()
+	outstack := []*Message{}
+
+	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+		input := copyMessage(m)
+		cmd := c.lpop()
+		finally := cmd.Execute(input, g)
+
+		go func() {
+			output := <-finally
+			if c.isRecorded() {
+				outstack = append(outstack, output)
+			}
+			if len(c.compositions()) == 0 || output.GetCode() >= 400 {
+				if c.isRecorded() {
+					f <- c.makeMessage(outstack)
+				} else {
+					f <- output
+				}
+			} else {
+				do(do, m, g, f)
+			}
+		}()
+	}
+
+	do(do, m, g, f)
+	return f
+}
+
+type OrOrComposer struct {
+	composition
+}
+
+func (c *OrOrComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+	f := outChan()
+
+	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+		input := copyMessage(m)
+		cmd := c.lpop()
+		finally := cmd.Execute(input, g)
+
+		go func() {
+			output := <-finally
+			if output.GetCode() < 400 || len(c.compositions()) == 0 {
+				f <- output
+			} else {
+				do(do, m, g, f)
+			}
+		}()
+	}
+
+	do(do, m, g, f)
+	return f
+}
+
+type BatchComposer struct {
+	recordableComposition
+}
+
+func (c *BatchComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+	f := outChan()
+	outstack := []*Message{}
+
+	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+		input := copyMessage(m)
+		cmd := c.lpop()
+		finally := cmd.Execute(input, g)
+
+		go func() {
+			output := <-finally
+			if c.isRecorded() {
+				outstack = append(outstack, output)
+			}
+			if len(c.compositions()) == 0 {
+				if c.isRecorded() {
+					f <- c.makeMessage(outstack)
+				} else {
+					f <- output
+				}
+			} else {
+				do(do, m, g, f)
+			}
+		}()
+	}
+
+	do(do, m, g, f)
+	return f
+}
+
+type ParallelComposer struct {
+	recordableComposition
+}
+
+func (c *ParallelComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+	f := outChan()
+
+	var wg sync.WaitGroup
+
+	mutex := &sync.Mutex{}
+	cmps := c.compositions()
+
+	outstack := make([]*Message, len(cmps))
+
+	for ix, cmd := range cmps {
+		wg.Add(1)
+		go func(cmd Composer, ix int) {
+			defer wg.Done()
+			output := <-cmd.Execute(copyMessage(m), g)
+
+			mutex.Lock()
+			outstack[ix] = output
+			mutex.Unlock()
+
+		}(cmd, ix)
+	}
+
+	go func() {
+		wg.Wait()
+		log.Println(c.makeMessage(outstack))
+		log.Println(outstack)
+		f <- c.makeMessage(outstack)
+	}()
+
+	return f
 }
 
 //New Pipe composition
-func NewPipe() *Composition {
-	c := new(Composition)
-	c.mode = pipe
+func NewPipe(cmds ...Composer) *PipeComposer {
+	c := new(PipeComposer)
+	c.add(cmds...)
 	return c
 }
 
-//New AndAnd Composition.
-func NewAndAnd() *Composition {
-	c := new(Composition)
-	c.mode = andand
+//New AndAnd composition.
+func NewAndAnd(cmds ...Composer) *AndAndComposer {
+	c := new(AndAndComposer)
+	c.add(cmds...)
 	return c
 }
 
 //New Batch composition
-func NewBatch() *Composition {
-	c := new(Composition)
-	c.mode = batch
+func NewBatch(cmds ...Composer) *BatchComposer {
+	c := new(BatchComposer)
+	c.add(cmds...)
 	return c
 }
 
-func NewOrOr() *Composition {
-	c := new(Composition)
-	c.mode = oror
+func NewOrOr(cmds ...Composer) *OrOrComposer {
+	c := new(OrOrComposer)
+	c.add(cmds...)
 	return c
 }
 
 //New Parallel composition
-func NewParallel() *Composition {
-	c := new(Composition)
-	c.mode = parallel
-	c.recordOutput = true
+func NewParallel(cmds ...Composer) *ParallelComposer {
+	c := new(ParallelComposer)
+	c.add(cmds...)
+	c.RecordOutput()
 	return c
 }
