@@ -57,8 +57,8 @@ func makeMessage(data interface{}) *Message {
 func TestFuncComposition(t *testing.T) {
 	key := "merge"
 	data := StrMap{"arg": 1}
-	c := NewFuncComposition(StrMap{key: 1})
-	msg := <-c.Execute(makeMessage(data), engine)
+	c := engine.NewFuncComposition(StrMap{key: 1})
+	msg := <-c.Execute(makeMessage(data))
 	if msg.GetCode() != 200 {
 		t.Error("Should not have raised Error")
 	}
@@ -71,8 +71,8 @@ func TestFuncComposition(t *testing.T) {
 // Transformation should fail while merging string to StrMap
 func TestFuncCompositionFail(t *testing.T) {
 	data := "arg"
-	c := NewFuncComposition(StrMap{"merge": 1})
-	msg := <-c.Execute(makeMessage(data), engine)
+	c := engine.NewFuncComposition(StrMap{"merge": 1})
+	msg := <-c.Execute(makeMessage(data))
 	if msg.GetCode() == 500 {
 		t.Error("Should have raised error")
 	}
@@ -81,9 +81,9 @@ func TestFuncCompositionFail(t *testing.T) {
 func TestCompositionExecute(t *testing.T) {
 
 	data := StrMap{}
-	c := NewRequestComposition(topicOne)
+	c := engine.NewRequestComposition(topicOne)
 
-	m := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	m.Unmarshal(&data)
 
 	for _, key := range []string{"input", "ack-one"} {
@@ -95,9 +95,9 @@ func TestCompositionExecute(t *testing.T) {
 
 func TestCompositionMergeExecute(t *testing.T) {
 	data := StrMap{}
-	c := NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
+	c := engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
 
-	m := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	m.Unmarshal(&data)
 
 	for _, key := range []string{"input", "ack-one", "merge-one"} {
@@ -111,9 +111,9 @@ func TestCompositionMergeExecute(t *testing.T) {
 // Output must contain the output of the micro service morphed with the
 // transformation.
 func TestComposePipe(t *testing.T) {
-	c := NewPipe(NewRequestComposition(topicOne).With(StrMap{"merge": 1}))
+	c := engine.NewPipe(engine.NewRequestComposition(topicOne).With(StrMap{"merge": 1}))
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -127,12 +127,12 @@ func TestComposePipe(t *testing.T) {
 }
 
 func TestComposeComplex(t *testing.T) {
-	c := NewPipe(
-		NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
-		NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+	c := engine.NewPipe(
+		engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
+		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -144,16 +144,16 @@ func TestComposeComplex(t *testing.T) {
 }
 
 func TestComposeNested(t *testing.T) {
-	c11 := NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
+	c11 := engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
 
-	c2 := NewPipe(
-		NewFuncComposition(StrMap{"fake-two": 1}),
-		NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+	c2 := engine.NewPipe(
+		engine.NewFuncComposition(StrMap{"fake-two": 1}),
+		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	c1 := NewPipe(c11, c2)
+	c1 := engine.NewPipe(c11, c2)
 
-	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -165,17 +165,17 @@ func TestComposeNested(t *testing.T) {
 }
 
 func TestComposeAndAnd(t *testing.T) {
-	c2 := NewPipe(
-		NewFuncComposition(StrMap{"fake-two": 1}),
-		NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+	c2 := engine.NewPipe(
+		engine.NewFuncComposition(StrMap{"fake-two": 1}),
+		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	c1 := NewAndAnd(
-		NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
+	c1 := engine.NewAndAnd(
+		engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
 		c2,
 	)
 
-	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -193,13 +193,13 @@ func TestComposeAndAnd(t *testing.T) {
 }
 
 func TestComposeAndAndFail(t *testing.T) {
-	c := NewAndAnd(
-		NewRequestComposition(topicOne),
-		NewRequestComposition(topicBadTwo),
-		NewRequestComposition(topicTwo),
+	c := engine.NewAndAnd(
+		engine.NewRequestComposition(topicOne),
+		engine.NewRequestComposition(topicBadTwo),
+		engine.NewRequestComposition(topicTwo),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 
 	if msg.GetCode() != 500 {
 		t.Error("Request should have failed")
@@ -211,12 +211,12 @@ func TestComposeAndAndFail(t *testing.T) {
 }
 
 func TestComposeBatchPass(t *testing.T) {
-	c := NewBatch(
-		NewRequestComposition(topicOne).With(StrMap{"merge": 1}),
-		NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+	c := engine.NewBatch(
+		engine.NewRequestComposition(topicOne).With(StrMap{"merge": 1}),
+		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -234,13 +234,13 @@ func TestComposeBatchPass(t *testing.T) {
 }
 
 func TestComposeBatchWontFail(t *testing.T) {
-	c := NewBatch(
-		NewRequestComposition(topicOne),
-		NewRequestComposition(topicBadTwo),
-		NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+	c := engine.NewBatch(
+		engine.NewRequestComposition(topicOne),
+		engine.NewRequestComposition(topicBadTwo),
+		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -266,14 +266,14 @@ func TestComposeBatchWontFail(t *testing.T) {
 }
 
 func TestBatchRecordOutput(t *testing.T) {
-	c := NewBatch(
-		NewRequestComposition(topicOne),
-		NewRequestComposition(topicTwo),
-		NewRequestComposition(topicThree),
+	c := engine.NewBatch(
+		engine.NewRequestComposition(topicOne),
+		engine.NewRequestComposition(topicTwo),
+		engine.NewRequestComposition(topicThree),
 	)
 	c.RecordOutput()
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
 
 	out := []*Message{}
 	for msg := range f {
@@ -296,14 +296,14 @@ func TestBatchRecordOutput(t *testing.T) {
 }
 
 func TestBatchBadRecord(t *testing.T) {
-	c := NewBatch(
-		NewRequestComposition(topicOne),
-		NewRequestComposition(topicBadTwo),
-		NewRequestComposition(topicThree),
+	c := engine.NewBatch(
+		engine.NewRequestComposition(topicOne),
+		engine.NewRequestComposition(topicBadTwo),
+		engine.NewRequestComposition(topicThree),
 	)
 	c.RecordOutput()
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
 
 	out := []*Message{}
 	for msg := range f {
@@ -321,13 +321,13 @@ func TestBatchBadRecord(t *testing.T) {
 }
 
 func TestOrOr(t *testing.T) {
-	c := NewOrOr(
-		NewRequestComposition(topicBadTwo),
-		NewRequestComposition(topicOne),
-		NewRequestComposition(topicThree),
+	c := engine.NewOrOr(
+		engine.NewRequestComposition(topicBadTwo),
+		engine.NewRequestComposition(topicOne),
+		engine.NewRequestComposition(topicThree),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
 	msg.Unmarshal(&expected)
 
@@ -346,13 +346,13 @@ func TestOrOr(t *testing.T) {
 }
 
 func TestParallel(t *testing.T) {
-	c := NewParallel(
-		NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
-		NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
-		NewRequestComposition(topicThree).With(StrMap{"merge-three": 1}),
+	c := engine.NewParallel(
+		engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
+		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+		engine.NewRequestComposition(topicThree).With(StrMap{"merge-three": 1}),
 	)
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}), engine)
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
 	out := []*Message{}
 	for msg := range f {
 		out = append(out, msg)

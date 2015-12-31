@@ -16,7 +16,7 @@ const (
 // Common Messenger interface that allows Func Transformer or another
 // composition.
 type Composer interface {
-	Execute(*Message, *Gilmour) <-chan *Message
+	Execute(*Message) <-chan *Message
 }
 
 // Standalone Merge transformer.
@@ -46,7 +46,7 @@ func outChan() chan *Message {
 	return make(chan *Message, 1)
 }
 
-func (hc *FuncComposition) Execute(m *Message, g *Gilmour) <-chan *Message {
+func (hc *FuncComposition) Execute(m *Message) <-chan *Message {
 	err := compositionMerge(&m.data, &hc.seed)
 	if err != nil {
 		m := NewMessage()
@@ -63,24 +63,17 @@ func (hc *FuncComposition) Execute(m *Message, g *Gilmour) <-chan *Message {
 	return finally
 }
 
-/*
-type FunComposer func(interface{}) (*Message, error)
-
-func (hc FunComposer) Execute(m *Message, g *Gilmour) (*Message, error) {
-	return hc(m)
-}
-*/
-
-//Constructor for HashComposer
-func NewFuncComposition(s interface{}) *FuncComposition {
-	return &FuncComposition{s}
-}
-
 // Command represent the each command inside a Pipeline.
 // Requires a topic to send the message to, and an optional transformer.
 type RequestComposer struct {
 	topic   string
+	engine  *Gilmour
 	message interface{}
+}
+
+//Set the Gilmour Engine required for execution
+func (rc *RequestComposer) setEngine(g *Gilmour) {
+	rc.engine = g
 }
 
 func (rc *RequestComposer) With(t interface{}) *RequestComposer {
@@ -92,7 +85,7 @@ func (rc *RequestComposer) With(t interface{}) *RequestComposer {
 	return rc
 }
 
-func (rc *RequestComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+func (rc *RequestComposer) Execute(m *Message) <-chan *Message {
 	if rc.message != nil {
 		if err := compositionMerge(&m.data, &rc.message); err != nil {
 			log.Println(err)
@@ -108,14 +101,8 @@ func (rc *RequestComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 		finally <- resp.gData
 	})
 
-	g.Request(rc.topic, m, opts)
+	rc.engine.Request(rc.topic, m, opts)
 	return finally
-}
-
-func NewRequestComposition(topic string) *RequestComposer {
-	rc := new(RequestComposer)
-	rc.topic = topic
-	return rc
 }
 
 // composition refers to a group of commands and defines the manner in which
@@ -123,8 +110,14 @@ func NewRequestComposition(topic string) *RequestComposer {
 // AndAnd, Batch, Pipe, Parallel. etc. Read documentation for more details.
 type composition struct {
 	sync.RWMutex
+	engine        *Gilmour
 	_compositions []Composer
 	output        []*Message
+}
+
+//Set the Gilmour Engine required for execution
+func (c *composition) setEngine(g *Gilmour) {
+	c.engine = g
 }
 
 //Get the output if they were previously recorded, or of a Parallel composition
@@ -234,30 +227,30 @@ func (c *recordableComposition) makeChan() (chan *Message, *sync.WaitGroup) {
 	return f, &wg
 }
 
-type recfunc func(recfunc, *Message, *Gilmour, chan<- *Message)
+type recfunc func(recfunc, *Message, chan<- *Message)
 
 type PipeComposer struct {
 	composition
 }
 
-func (c *PipeComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+func (c *PipeComposer) Execute(m *Message) <-chan *Message {
 	f := outChan()
 
-	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+	do := func(do recfunc, m *Message, f chan<- *Message) {
 		cmd := c.lpop()
-		finally := cmd.Execute(m, g)
+		finally := cmd.Execute(m)
 
 		go func() {
 			output := <-finally
 			if len(c.compositions()) == 0 || output.GetCode() >= 400 {
 				f <- output
 			} else {
-				do(do, output, g, f)
+				do(do, output, f)
 			}
 		}()
 	}
 
-	do(do, copyMessage(m), g, f)
+	do(do, copyMessage(m), f)
 	return f
 }
 
@@ -265,13 +258,13 @@ type AndAndComposer struct {
 	composition
 }
 
-func (c *AndAndComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+func (c *AndAndComposer) Execute(m *Message) <-chan *Message {
 	f := outChan()
 
-	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+	do := func(do recfunc, m *Message, f chan<- *Message) {
 		input := copyMessage(m)
 		cmd := c.lpop()
-		finally := cmd.Execute(input, g)
+		finally := cmd.Execute(input)
 
 		go func() {
 			output := <-finally
@@ -279,12 +272,12 @@ func (c *AndAndComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 			if len(c.compositions()) == 0 || output.GetCode() >= 400 {
 				f <- output
 			} else {
-				do(do, m, g, f)
+				do(do, m, f)
 			}
 		}()
 	}
 
-	do(do, m, g, f)
+	do(do, m, f)
 	return f
 }
 
@@ -292,25 +285,25 @@ type OrOrComposer struct {
 	composition
 }
 
-func (c *OrOrComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+func (c *OrOrComposer) Execute(m *Message) <-chan *Message {
 	f := outChan()
 
-	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+	do := func(do recfunc, m *Message, f chan<- *Message) {
 		input := copyMessage(m)
 		cmd := c.lpop()
-		finally := cmd.Execute(input, g)
+		finally := cmd.Execute(input)
 
 		go func() {
 			output := <-finally
 			if output.GetCode() < 400 || len(c.compositions()) == 0 {
 				f <- output
 			} else {
-				do(do, m, g, f)
+				do(do, m, f)
 			}
 		}()
 	}
 
-	do(do, m, g, f)
+	do(do, m, f)
 	return f
 }
 
@@ -318,13 +311,13 @@ type BatchComposer struct {
 	recordableComposition
 }
 
-func (c *BatchComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+func (c *BatchComposer) Execute(m *Message) <-chan *Message {
 	f, wg := c.makeChan()
 
-	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+	do := func(do recfunc, m *Message, f chan<- *Message) {
 		input := copyMessage(m)
 		cmd := c.lpop()
-		finally := cmd.Execute(input, g)
+		finally := cmd.Execute(input)
 
 		go func() {
 			defer wg.Done()
@@ -339,13 +332,13 @@ func (c *BatchComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 					f <- output
 				}
 			} else {
-				do(do, m, g, f)
+				do(do, m, f)
 			}
 
 		}()
 	}
 
-	do(do, m, g, f)
+	do(do, m, f)
 	return f
 }
 
@@ -353,16 +346,16 @@ type ParallelComposer struct {
 	recordableComposition
 }
 
-func (c *ParallelComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
+func (c *ParallelComposer) Execute(m *Message) <-chan *Message {
 	f, wg := c.makeChan()
 
-	do := func(do recfunc, m *Message, g *Gilmour, f chan<- *Message) {
+	do := func(do recfunc, m *Message, f chan<- *Message) {
 		input := copyMessage(m)
 
 		go func(c *ParallelComposer) {
 			defer wg.Done()
 			cmd := c.lpop()
-			output := <-cmd.Execute(input, g)
+			output := <-cmd.Execute(input)
 
 			if c.isRecorded() {
 				f <- output
@@ -373,46 +366,65 @@ func (c *ParallelComposer) Execute(m *Message, g *Gilmour) <-chan *Message {
 					f <- output
 				}
 			} else {
-				do(do, m, g, f)
+				do(do, m, f)
 			}
 
 		}(c)
 	}
 
-	do(do, m, g, f)
+	do(do, m, f)
 	return f
 }
 
+//Constructor for HashComposer
+func (g *Gilmour) NewFuncComposition(s interface{}) *FuncComposition {
+	fc := &FuncComposition{s}
+	return fc
+}
+
+//New Request composition
+func (g *Gilmour) NewRequestComposition(topic string) *RequestComposer {
+	rc := new(RequestComposer)
+	rc.setEngine(g)
+	rc.topic = topic
+	return rc
+}
+
 //New Pipe composition
-func NewPipe(cmds ...Composer) *PipeComposer {
+func (g *Gilmour) NewPipe(cmds ...Composer) *PipeComposer {
 	c := new(PipeComposer)
+	c.setEngine(g)
 	c.add(cmds...)
 	return c
 }
 
 //New AndAnd composition.
-func NewAndAnd(cmds ...Composer) *AndAndComposer {
+func (g *Gilmour) NewAndAnd(cmds ...Composer) *AndAndComposer {
 	c := new(AndAndComposer)
+	c.setEngine(g)
 	c.add(cmds...)
 	return c
 }
 
 //New Batch composition
-func NewBatch(cmds ...Composer) *BatchComposer {
+func (g *Gilmour) NewBatch(cmds ...Composer) *BatchComposer {
 	c := new(BatchComposer)
+	c.setEngine(g)
 	c.add(cmds...)
 	return c
 }
 
-func NewOrOr(cmds ...Composer) *OrOrComposer {
+func (g *Gilmour) NewOrOr(cmds ...Composer) *OrOrComposer {
 	c := new(OrOrComposer)
+	c.setEngine(g)
 	c.add(cmds...)
 	return c
 }
 
 //New Parallel composition
-func NewParallel(cmds ...Composer) *ParallelComposer {
+func (g *Gilmour) NewParallel(cmds ...Composer) *ParallelComposer {
 	c := new(ParallelComposer)
+	c.setEngine(g)
 	c.add(cmds...)
 	c.RecordOutput()
 	return c
