@@ -1,8 +1,12 @@
 package gilmour
 
+import (
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
+)
+
 type Request struct {
 	topic string
-	gData *Message
+	gData protocol.RecvRequest
 }
 
 func (self *Request) Sender() string {
@@ -10,11 +14,11 @@ func (self *Request) Sender() string {
 }
 
 func (self *Request) RawData() interface{} {
-	return self.gData.data
+	return self.gData.RawData()
 }
 
 func (self *Request) Data(t interface{}) {
-	self.gData.Unmarshal(t)
+	self.gData.GetData(t)
 }
 
 func (self *Request) Topic() string {
@@ -26,10 +30,9 @@ func (self *Request) Code() int {
 }
 
 func (self *Request) StringData() []byte {
-	byt, _ := self.gData.StringData()
-	return byt
+	return self.gData.RawData()
 }
 
-func NewRequest(t string, gd *Message) *Request {
+func NewRequest(t string, gd protocol.RecvRequest) *Request {
 	return &Request{t, gd}
 }
