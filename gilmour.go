@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v1/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v3/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v3/ui"
 )
 
 func Get(backend Backend) *Gilmour {
