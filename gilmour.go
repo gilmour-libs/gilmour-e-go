@@ -73,7 +73,7 @@ func (self *Gilmour) processMessage(msg *protocol.Message) {
 }
 
 func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data interface{}) {
-	d, err := protocol.ParseResponse(data)
+	m, err := ParseMessage(data)
 	if err != nil {
 		ui.Alert(err.Error())
 		return
@@ -81,22 +81,22 @@ func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data inter
 
 	opts := s.GetOpts()
 	if opts.GetGroup() != protocol.BLANK {
-		if !self.backend.AcquireGroupLock(opts.GetGroup(), d.GetSender()) {
+		if !self.backend.AcquireGroupLock(opts.GetGroup(), m.GetSender()) {
 			ui.Warn(
 				"Unable to acquire Lock. Topic %v Group %v Sender %v",
-				topic, opts.GetGroup(), d.GetSender(),
+				topic, opts.GetGroup(), m.GetSender(),
 			)
 			return
 		}
 	}
 
-	go self.handleRequest(s, topic, d)
+	go self.handleRequest(s, topic, m)
 }
 
-func (self *Gilmour) handleRequest(s *Subscription, topic string, d *protocol.RecvRequest) {
-	senderId := d.GetSender()
+func (self *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
+	senderId := m.GetSender()
 
-	req := NewRequest(topic, *d)
+	req := NewRequest(topic, m)
 
 	res := &Message{}
 	res.SetSender(self.backend.ResponseTopic(senderId))
@@ -398,6 +398,8 @@ func (self *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sen
 	return sender, self.publish(self.requestDestination(topic), msg)
 }
 
+// Same as Request but emulates synchronous behavior. Will not return until you
+// have error or data.
 func (self *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*Request, error) {
 	var req *Request
 

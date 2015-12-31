@@ -594,10 +594,20 @@ func waitBeforeExiting(interval int) {
 	wg.Wait()
 }
 
+var initializers []func(*Gilmour)
+
+func attachSetup(f func(*Gilmour)) {
+	initializers = append(initializers, f)
+}
+
 func TestMain(m *testing.M) {
 	ui.SetLevel(ui.Levels.Message)
 
 	engine = Get(redis)
+
+	for _, f := range initializers {
+		f(engine)
+	}
 
 	engine.Start()
 

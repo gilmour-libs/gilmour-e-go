@@ -7,6 +7,12 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v1/protocol"
 )
 
+type pubMsg struct {
+	Data   interface{} `json:"data"`
+	Code   int         `json:"code"`
+	Sender string      `json:"sender"`
+}
+
 type Message struct {
 	data   interface{} `json:"data"`
 	code   int         `json:"code"`
@@ -14,50 +20,80 @@ type Message struct {
 	sync.Mutex
 }
 
-func (self *Message) GetData() interface{} {
-	return self.data
+func (m *Message) StringData() ([]byte, error) {
+	return json.Marshal(m.data)
 }
 
-func (self *Message) Send(data interface{}) {
-	self.SetData(data)
+func (m *Message) GetData() interface{} {
+	return m.data
 }
 
-func (self *Message) SetData(data interface{}) *Message {
-	self.Lock()
-	defer self.Unlock()
+func (m *Message) Send(data interface{}) *Message {
+	m.SetData(data)
+	return m
+}
 
-	if self.data != nil {
+func (m *Message) SetData(data interface{}) *Message {
+	m.Lock()
+	defer m.Unlock()
+
+	if m.data != nil {
 		panic("Cannot rewrite data for Message.")
 	}
 
-	self.data = data
-	return self
+	m.data = data
+	return m
 }
 
-func (self *Message) GetCode() int {
-	return self.code
+func (m *Message) GetCode() int {
+	return m.code
 }
 
-func (self *Message) SetCode(code int) *Message {
-	self.code = code
-	return self
+func (m *Message) SetCode(code int) *Message {
+	m.code = code
+	return m
 }
 
-func (self *Message) GetSender() string {
-	return self.sender
+func (m *Message) GetSender() string {
+	return m.sender
 }
 
-func (self *Message) SetSender(sender string) *Message {
-	self.sender = sender
-	return self
+func (m *Message) SetSender(sender string) *Message {
+	m.sender = sender
+	return m
 }
 
-func (self *Message) Marshal() ([]byte, error) {
-	return json.Marshal(struct {
-		Data   interface{} `json:"data"`
-		Code   int         `json:"code"`
-		Sender string      `json:"sender"`
-	}{self.data, self.code, self.sender})
+func (m *Message) Marshal() ([]byte, error) {
+	return json.Marshal(pubMsg{m.data, m.code, m.sender})
+}
+
+func (m *Message) Unmarshal(t interface{}) error {
+	if byts, err := m.StringData(); err != nil {
+		return err
+	} else {
+		return json.Unmarshal(byts, t)
+	}
+}
+
+func ParseMessage(data interface{}) (resp *Message, err error) {
+	var msg []byte
+
+	switch t := data.(type) {
+	case string:
+		msg = []byte(t)
+	case []byte:
+		msg = t
+	case json.RawMessage:
+		msg = t
+	}
+
+	_msg := new(pubMsg)
+	err = json.Unmarshal(msg, _msg)
+	if err == nil {
+		resp = &Message{data: _msg.Data, code: _msg.Code, sender: _msg.Sender}
+	}
+
+	return
 }
 
 func NewMessage() *Message {
