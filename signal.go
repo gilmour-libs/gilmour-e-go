@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"gopkg.in/gilmour-libs/gilmour-e-go.v1/ui"
 )
 
 func BindSignals(engine *Gilmour) {
@@ -16,7 +18,7 @@ func BindSignals(engine *Gilmour) {
 	go func() {
 		<-sigc
 		engine.Stop()
-		log.Info("Shutting down engines.")
+		ui.Warn("Shutting down engines.")
 		os.Exit(0)
 	}()
 }
