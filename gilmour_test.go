@@ -11,8 +11,8 @@ import (
 	"time"
 
 	redigo "github.com/garyburd/redigo/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v1/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v1/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v3/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v3/ui"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 
 var engine *Gilmour
 
-var redis = backends.MakeRedis("127.0.0.1:6379")
+var redis = backends.MakeRedis("127.0.0.1:6379", "")
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
