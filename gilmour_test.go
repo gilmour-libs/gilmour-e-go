@@ -294,6 +294,85 @@ func TestTwiceReplyToFail(t *testing.T) {
 	}
 }
 
+type slotStruct struct {
+	Args []string `json:"args"`
+}
+
+type failedSlotStruct struct {
+	args []string `json:"args"`
+}
+
+func TestSignalSlotStruct(t *testing.T) {
+	topic := randSeq(10)
+	out_chan := make(chan *slotStruct, 1)
+	opts := MakeHandlerOpts()
+
+	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
+		var x slotStruct
+		req.Data(&x)
+		out_chan <- &x
+	}, opts)
+
+	defer engine.UnsubscribeSlot(topic, sub)
+
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	data := slotStruct{[]string{"a", "b", "c"}}
+
+	//Publish a message to random topic
+	engine.Signal(topic, NewMessage().SetData(data))
+
+	// Select Case, once and that should work.
+	select {
+	case result := <-out_chan:
+		if len(result.Args) != 3 {
+			t.Error("Should have received 3 strings in data")
+		}
+	case <-time.After(time.Second * 2):
+		t.Error("Message should be twice, timed out instead")
+	}
+}
+
+// Should fail because of unexported field in struct
+func TestSignalSlotStructFailed(t *testing.T) {
+	topic := randSeq(10)
+	out_chan := make(chan *failedSlotStruct, 1)
+	opts := MakeHandlerOpts()
+
+	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
+		var x failedSlotStruct
+		req.Data(&x)
+		out_chan <- &x
+	}, opts)
+
+	defer engine.UnsubscribeSlot(topic, sub)
+
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	data := failedSlotStruct{[]string{"a", "b", "c"}}
+
+	//Publish a message to random topic
+	engine.Signal(topic, NewMessage().SetData(data))
+
+	// Select Case, once and that should work.
+	select {
+	case result := <-out_chan:
+		if len(result.args) != 0 {
+			t.Error("Should not have received any string in data")
+		}
+	case <-time.After(time.Second * 2):
+		t.Error("Message should be twice, timed out instead")
+	}
+
+	engine.UnsubscribeSlot(topic, sub)
+}
+
 func TestSendOnceReceiveTwice(t *testing.T) {
 	topic := randSeq(10)
 	count := 2
