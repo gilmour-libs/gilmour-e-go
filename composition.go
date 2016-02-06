@@ -13,8 +13,24 @@ const (
 	oror     = "oror"
 )
 
-// Common Messenger interface that allows Func Transformer or another
-// composition.
+/*
+Microservices increase the granularity of our services oriented architectures.
+Borrowing from unix philosohy, they should do one thing and do it well.
+However, for this to be really useful, there should be a facility such as is
+provided by unix shells. Unix shells allow the composition of small commands
+using the following methods
+
+Composition: cmd1 | cmd2 | cmd2
+AndAnd: cmd1 && cmd2 && cmd3
+Batch: cmd1; cmd2; cmd3 > out or (cmd1; cmd2; cmd3) > out
+Parallel: This runs stages in parallel call the callback when all are done.
+The data passed to the callback is an array of :code hashes in no particular
+order. The code is the highest error code from the array.
+
+Also, you should be able to use these methods of composition in any combination
+and also in a nexted manner - (cmd1 | cmd2) && cmd3. Gilmour enables you to do
+just that.
+*/
 type Composer interface {
 	Execute(*Message) <-chan *Message
 }
