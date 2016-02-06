@@ -1,9 +1,10 @@
 package protocol
 
 import (
-	"code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"os"
+
+	"github.com/pborman/uuid"
 )
 
 func getHostname() string {
