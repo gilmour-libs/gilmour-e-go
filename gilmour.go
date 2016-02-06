@@ -88,7 +88,7 @@ func (g *Gilmour) processMessage(msg *protocol.Message) {
 	for _, s := range subs {
 
 		opts := s.GetOpts()
-		if opts != nil && opts.IsOneShot() {
+		if opts != nil && opts.isOneShot() {
 			ui.Message("Unsubscribing one shot response topic %v", msg.Topic)
 			go g.UnsubscribeReply(msg.Key, s)
 		}
@@ -396,7 +396,7 @@ func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender
 	respChannel := responseTopic(sender)
 
 	//Wait for a responseHandler
-	rOpts := NewHandlerOpts().SetOneShot().SetGroup("response")
+	rOpts := NewHandlerOpts().setOneShot().SetGroup("response")
 	g.ReplyTo(respChannel, opts.GetHandler(), rOpts)
 
 	timeout := opts.GetTimeout()

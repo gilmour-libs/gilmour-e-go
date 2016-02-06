@@ -4,8 +4,12 @@ import "sync"
 
 const TIMEOUT = 600
 
-// Handler Options to be passed alongside each Handler at time of topic
-// subscription.
+/*
+Handler Options to be passed alongside each Handler at time of topic
+subscription. The struct allows chaining and can conveniently be used like
+
+x := NewHandlerOpts().SetTimeout(500).SetGroup("hello-world")
+*/
 type HandlerOpts struct {
 	group   string
 	timeout int
@@ -57,7 +61,7 @@ func (h *HandlerOpts) SetGroup(group string) *HandlerOpts {
 }
 
 // Is this a one shot handler? Read Setter for details.
-func (h *HandlerOpts) IsOneShot() bool {
+func (h *HandlerOpts) isOneShot() bool {
 	h.RLock()
 	defer h.RUnlock()
 
@@ -67,7 +71,7 @@ func (h *HandlerOpts) IsOneShot() bool {
 // Set this handler to be executed only once. The subscription would be
 // unsubscribed on the very first message delivered to the handler,
 // either successfully or unsuccessfully.
-func (h *HandlerOpts) SetOneShot() *HandlerOpts {
+func (h *HandlerOpts) setOneShot() *HandlerOpts {
 	h.Lock()
 	defer h.Unlock()
 
