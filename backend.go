@@ -1,16 +1,14 @@
 package gilmour
 
 import (
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
 )
 
 type Backend interface {
-	Start(chan *protocol.Message)
+	Start(chan<- *protocol.Message)
 	Stop()
 
 	HasActiveSubscribers(topic string) (bool, error)
-	HealthTopic(ident string) string
-	ResponseTopic(sender string) string
 
 	Subscribe(topic, group string) error
 	Unsubscribe(topic string) error

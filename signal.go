@@ -5,7 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
 func BindSignals(engine *Gilmour) {

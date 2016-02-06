@@ -7,13 +7,10 @@ import (
 	"sync"
 
 	"github.com/garyburd/redigo/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
 )
 
 const defaultErrorQueue = "gilmour.errorqueue"
-const defaultErrorTopic = "gilmour.errors"
-const defaultHealthTopic = "gilmour.health"
-const defaultResponseTopic = "gilmour.response"
 const defaultIdentKey = "gilmour.known_host.health"
 const defaultErrorBuffer = 9999
 
@@ -29,10 +26,6 @@ type Redis struct {
 	redisPool  *redis.Pool
 	pubsubConn redis.PubSubConn
 	sync.Mutex
-}
-
-func (self *Redis) getErrorTopic() string {
-	return defaultErrorTopic
 }
 
 func (self *Redis) getPubSubConn() redis.PubSubConn {
@@ -84,7 +77,7 @@ func (self *Redis) ReportError(method string, message *protocol.Error) (err erro
 
 	switch method {
 	case protocol.PUBLISH:
-		err = self.Publish(self.getErrorTopic(), message)
+		err = self.Publish(protocol.ErrorTopic, message)
 
 	case protocol.QUEUE:
 		msg, merr := message.Marshal()
@@ -134,14 +127,6 @@ func (self *Redis) GetHealthIdent() string {
 	return defaultIdentKey
 }
 
-func (self *Redis) HealthTopic(ident string) string {
-	return defaultHealthTopic + "." + ident
-}
-
-func (self *Redis) ResponseTopic(sender string) string {
-	return defaultResponseTopic + "." + sender
-}
-
 func (self *Redis) Publish(topic string, message interface{}) (err error) {
 	var msg string
 	switch t := message.(type) {
@@ -185,14 +170,14 @@ func (self *Redis) UnregisterIdent(uuid string) error {
 	return err
 }
 
-func (self *Redis) Start(sink chan *protocol.Message) {
+func (self *Redis) Start(sink chan<- *protocol.Message) {
 	self.setupListeners(sink)
 }
 
 func (self *Redis) Stop() {
 }
 
-func (self *Redis) setupListeners(sink chan *protocol.Message) {
+func (self *Redis) setupListeners(sink chan<- *protocol.Message) {
 	go func() {
 		for {
 			switch v := self.getPubSubConn().Receive().(type) {

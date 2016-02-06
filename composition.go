@@ -34,7 +34,7 @@ func copyMessage(m *Message) *Message {
 		panic(err)
 	}
 
-	msg, err := ParseMessage(byts)
+	msg, err := parseMessage(byts)
 	if err != nil {
 		panic(err)
 	}

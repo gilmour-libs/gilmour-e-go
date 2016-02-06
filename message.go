@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
 )
 
 type pubMsg struct {
@@ -75,7 +75,7 @@ func (m *Message) Unmarshal(t interface{}) error {
 	}
 }
 
-func ParseMessage(data interface{}) (resp *Message, err error) {
+func parseMessage(data interface{}) (resp *Message, err error) {
 	var msg []byte
 
 	switch t := data.(type) {

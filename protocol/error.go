@@ -9,6 +9,8 @@ const QUEUE = "queue"
 const PUBLISH = "publish"
 const BLANK = ""
 
+const ErrorTopic = "gilmour.errors"
+
 type Error struct {
 	topic        string
 	requestData  string

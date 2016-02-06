@@ -11,8 +11,8 @@ import (
 	"time"
 
 	redigo "github.com/garyburd/redigo/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
 const (
@@ -73,7 +73,7 @@ func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
 func TestHealthSubscribe(t *testing.T) {
 	engine.SetHealthCheckEnabled()
 
-	topic := redis.HealthTopic(engine.GetIdent())
+	topic := healthTopic(engine.getIdent())
 	if has, _ := isReplySubscribed(topic); !has {
 		t.Error(topic, "should have been subscribed")
 	}
@@ -193,7 +193,7 @@ func TestHealthGetAll(t *testing.T) {
 		t.Error(err)
 	}
 
-	val, ok := idents[engine.GetIdent()]
+	val, ok := idents[engine.getIdent()]
 	if !ok || val != "true" {
 		t.Error("Ident is missing in the Health ident")
 	}
@@ -445,7 +445,7 @@ func TestHealthResponse(t *testing.T) {
 		}
 	})
 
-	_, err := engine.Request(redis.HealthTopic(engine.GetIdent()), data, opts)
+	_, err := engine.Request(healthTopic(engine.getIdent()), data, opts)
 	if err != nil {
 		t.Error(err)
 	}
