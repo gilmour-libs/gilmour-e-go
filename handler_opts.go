@@ -4,60 +4,90 @@ import "sync"
 
 const TIMEOUT = 600
 
+// Handler Options to be passed alongside each Handler at time of topic
+// subscription.
 type HandlerOpts struct {
 	group   string
 	timeout int
 	oneShot bool
-	isSlot  bool
-	sync.Mutex
+	_isSlot bool
+	sync.RWMutex
 }
 
-func (self *HandlerOpts) GetTimeout() int {
+// Get the execution timeout for the associated handler. If one was not
+// explicitly set Gilmour assumes and also sets a default of 600.
+func (h *HandlerOpts) GetTimeout() int {
 	//Parallel Goroutines will othrwise run into race condition.
-	self.Lock()
-	defer self.Unlock()
+	h.Lock()
+	defer h.Unlock()
 
-	if self.timeout == 0 {
-		self.timeout = TIMEOUT
+	if h.timeout == 0 {
+		h.timeout = TIMEOUT
 	}
 
-	return self.timeout
+	return h.timeout
 }
 
-func (self *HandlerOpts) SetTimeout(t int) *HandlerOpts {
-	self.timeout = t
-	return self
+// Set the execution timeout for this Handler, otherwise a default of 600
+// seconds is assumed.
+func (h *HandlerOpts) SetTimeout(t int) *HandlerOpts {
+	h.Lock()
+	defer h.Unlock()
+
+	h.timeout = t
+	return h
 }
 
-func (self *HandlerOpts) GetGroup() string {
-	return self.group
+// If the Handler is to be executed as a part of an exclusive Group.
+func (h *HandlerOpts) GetGroup() string {
+	h.RLock()
+	defer h.RUnlock()
+
+	return h.group
 }
 
-func (self *HandlerOpts) SetGroup(group string) *HandlerOpts {
-	self.group = group
-	return self
+// Set this handler to be a part of an exclusive Group. At the most one
+// handler is executed per exclusive group.
+func (h *HandlerOpts) SetGroup(group string) *HandlerOpts {
+	h.Lock()
+	defer h.Unlock()
+
+	h.group = group
+	return h
 }
 
-func (self *HandlerOpts) IsOneShot() bool {
-	return self.oneShot
+// Is this a one shot handler? Read Setter for details.
+func (h *HandlerOpts) IsOneShot() bool {
+	h.RLock()
+	defer h.RUnlock()
+
+	return h.oneShot
 }
 
-func (self *HandlerOpts) SetOneShot() *HandlerOpts {
-	self.oneShot = true
-	return self
+// Set this handler to be executed only once. The subscription would be
+// unsubscribed on the very first message delivered to the handler,
+// either successfully or unsuccessfully.
+func (h *HandlerOpts) SetOneShot() *HandlerOpts {
+	h.Lock()
+	defer h.Unlock()
+
+	h.oneShot = true
+	return h
 }
 
-func (self *HandlerOpts) IsSlot() bool {
-	return self.isSlot
+func (h *HandlerOpts) isSlot() bool {
+	h.RLock()
+	defer h.RUnlock()
+
+	return h._isSlot
 }
 
-func (self *HandlerOpts) SetSlot() *HandlerOpts {
-	self.isSlot = true
-	return self
-}
+func (h *HandlerOpts) setSlot() *HandlerOpts {
+	h.Lock()
+	defer h.Unlock()
 
-func MakeHandlerOpts() *HandlerOpts {
-	return NewHandlerOpts()
+	h._isSlot = true
+	return h
 }
 
 func NewHandlerOpts() *HandlerOpts {

@@ -154,7 +154,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 
 	status := <-done
 
-	if !s.GetOpts().IsSlot() {
+	if !s.GetOpts().isSlot() {
 		if status == false {
 			g.sendTimeout(senderId, res.GetSender())
 		} else {
@@ -441,7 +441,7 @@ func (g *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscriptio
 		opts = &HandlerOpts{}
 	}
 
-	opts.SetSlot()
+	opts.setSlot()
 	return g.subscribe(g.slotDestination(topic), h, opts)
 }
 

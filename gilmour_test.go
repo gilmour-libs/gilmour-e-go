@@ -81,7 +81,7 @@ func TestHealthSubscribe(t *testing.T) {
 
 func TestSubscribePing(t *testing.T) {
 	timeout := 3
-	handler_opts := MakeHandlerOpts().SetTimeout(timeout)
+	handler_opts := NewHandlerOpts().SetTimeout(timeout)
 	sub, err := engine.ReplyTo(PingTopic, func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
@@ -147,7 +147,7 @@ func TestSubscribePingSync(t *testing.T) {
 }
 
 func TestWildcardSlot(t *testing.T) {
-	opts := MakeHandlerOpts().SetGroup("wildcard_group")
+	opts := NewHandlerOpts().SetGroup("wildcard_group")
 	topic := fmt.Sprintf("%v*", PingTopic)
 	_, err := engine.Slot(topic, func(req *Request, resp *Message) {}, opts)
 	if err != nil {
@@ -223,7 +223,7 @@ func TestRelayFromSubscriber(t *testing.T) {
 
 func TestTwiceSlot(t *testing.T) {
 	topic := randSeq(10)
-	opts := MakeHandlerOpts()
+	opts := NewHandlerOpts()
 
 	subs := []*Subscription{}
 	defer func() {
@@ -245,7 +245,7 @@ func TestTwiceSlot(t *testing.T) {
 func TestTwiceSlotFail(t *testing.T) {
 	topic := randSeq(10)
 	count := 2
-	opts := MakeHandlerOpts().SetGroup("unique")
+	opts := NewHandlerOpts().SetGroup("unique")
 
 	subs := []*Subscription{}
 	defer func() {
@@ -271,7 +271,7 @@ func TestTwiceSlotFail(t *testing.T) {
 func TestTwiceReplyToFail(t *testing.T) {
 	topic := randSeq(10)
 	count := 2
-	opts := MakeHandlerOpts() //Note, we did not pass a group.
+	opts := NewHandlerOpts() //Note, we did not pass a group.
 
 	subs := []*Subscription{}
 	defer func() {
@@ -305,7 +305,7 @@ type failedSlotStruct struct {
 func TestSignalSlotStruct(t *testing.T) {
 	topic := randSeq(10)
 	out_chan := make(chan *slotStruct, 1)
-	opts := MakeHandlerOpts()
+	opts := NewHandlerOpts()
 
 	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
 		var x slotStruct
@@ -340,7 +340,7 @@ func TestSignalSlotStruct(t *testing.T) {
 func TestSignalSlotStructFailed(t *testing.T) {
 	topic := randSeq(10)
 	out_chan := make(chan *failedSlotStruct, 1)
-	opts := MakeHandlerOpts()
+	opts := NewHandlerOpts()
 
 	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
 		var x failedSlotStruct
@@ -396,7 +396,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 	// Subscribe x no. of times
 	for i := 0; i < count; i++ {
 		data := fmt.Sprintf("hello %v", i)
-		opts := MakeHandlerOpts().SetGroup(randSeq(10))
+		opts := NewHandlerOpts().SetGroup(randSeq(10))
 
 		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {
 			out_chan <- data
@@ -579,7 +579,7 @@ func TestSubscriberTimeout(t *testing.T) {
 			time.Sleep(time.Second * 4)
 			resp.Send(PingResponse)
 		},
-		MakeHandlerOpts().SetTimeout(2),
+		NewHandlerOpts().SetTimeout(2),
 	)
 
 	if err != nil {

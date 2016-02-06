@@ -15,7 +15,7 @@ const (
 type StrMap map[string]interface{}
 
 func Setup(e *Gilmour) {
-	o := MakeHandlerOpts()
+	o := NewHandlerOpts()
 
 	e.ReplyTo(topicBadTwo, func(r *Request, s *Message) {
 		panic("bad-two")
