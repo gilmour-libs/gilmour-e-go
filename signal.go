@@ -8,9 +8,9 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
-//Call to start listening on signals for graceful shutdown & cleanup.
-//By default the method listens to SIGHUP, SIGINT, SIGTERM, SIGQUIT, however
-//you can override this by providing a list of desired signals instead.
+// Call to start listening on signals for graceful shutdown & cleanup. By
+// default Gilmour listens to SIGHUP, SIGINT, SIGTERM, SIGQUIT, however
+// you can override this by providing a list of desired signals instead.
 func (g *Gilmour) BindSignals(signals ...os.Signal) {
 	sigc := make(chan os.Signal, 1)
 

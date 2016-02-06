@@ -31,7 +31,7 @@ type Gilmour struct {
 	subscriberMutex   sync.RWMutex
 	backend           Backend
 	ident             string
-	errorMethod       string
+	errorPolicy       string
 	subscriber        subscriber
 }
 
@@ -288,25 +288,32 @@ func (g *Gilmour) unsubscribe(topic string, s *Subscription) {
 	}
 }
 
-//Gilmour allows you to do more with your error messages.
-//You can 1) Publish them, 2) Queue them 3) or just Ignore them.
-//The error message is delivered to the backend alongwith this choice.
-func (g *Gilmour) SetErrorMethod(method string) {
-	if method != protocol.QUEUE &&
-		method != protocol.PUBLISH &&
-		method != protocol.BLANK {
+/*
+Gilmour allows you to do more with service error messages by using one of the
+following policies:
+
+	1) Publish.
+	2) Queue.
+	3) Ignore.
+
+Error messages are forwarded to the configured backend alongwith policy.
+*/
+func (g *Gilmour) SetErrorPolicy(policy string) {
+	if policy != protocol.QUEUE &&
+		policy != protocol.PUBLISH &&
+		policy != protocol.BLANK {
 		panic(errors.New(fmt.Sprintf(
-			"error method can only be %v, %v or %v",
+			"error policy can only be %v, %v or %v",
 			protocol.QUEUE, protocol.PUBLISH, protocol.BLANK,
 		)))
 	}
 
-	g.errorMethod = method
+	g.errorPolicy = policy
 }
 
-//Currently set error method policy.
-func (g *Gilmour) GetErrorMethod() string {
-	return g.errorMethod
+//Error policy for this Gilmour engine.
+func (g *Gilmour) GetErrorPolicy() string {
+	return g.errorPolicy
 }
 
 func (g *Gilmour) reportError(e *protocol.Error) {
@@ -315,7 +322,7 @@ func (g *Gilmour) reportError(e *protocol.Error) {
 		e.GetCode(), e.GetSender(), e.GetTopic(),
 	)
 
-	err := g.backend.ReportError(g.GetErrorMethod(), e)
+	err := g.backend.ReportError(g.GetErrorPolicy(), e)
 	if err != nil {
 		panic(err)
 	}
