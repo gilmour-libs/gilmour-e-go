@@ -8,6 +8,8 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
+//Call this method with a Gilmour instance for graceful shutdown and cleanup
+//on os signals. Dont' know if it works on Windows.
 func BindSignals(engine *Gilmour) {
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
