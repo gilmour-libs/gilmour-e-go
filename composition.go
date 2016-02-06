@@ -24,7 +24,7 @@ type Composer interface {
 // seeding it to the next command. Requires to be seeded with an interface
 // which will be applied to the previous command's output Message only if the
 // type is convertible. In case of a failure it shall raise an Error.
-type FuncComposition struct {
+type FuncComposer struct {
 	seed interface{}
 }
 
@@ -46,7 +46,7 @@ func outChan() chan *Message {
 	return make(chan *Message, 1)
 }
 
-func (hc *FuncComposition) Execute(m *Message) <-chan *Message {
+func (hc *FuncComposer) Execute(m *Message) <-chan *Message {
 	err := compositionMerge(&m.data, &hc.seed)
 	if err != nil {
 		m := NewMessage()
@@ -377,8 +377,8 @@ func (c *ParallelComposer) Execute(m *Message) <-chan *Message {
 }
 
 //Constructor for HashComposer
-func (g *Gilmour) NewFuncComposition(s interface{}) *FuncComposition {
-	fc := &FuncComposition{s}
+func (g *Gilmour) NewFuncComposition(s interface{}) *FuncComposer {
+	fc := &FuncComposer{s}
 	return fc
 }
 

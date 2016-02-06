@@ -66,9 +66,12 @@ func (g *Gilmour) startReciver(sink <-chan *protocol.Message) {
 	}
 }
 
-//Process a Gilmour message. For all subscribers of this topic,
-// * Check if it's one shot, unsubscribe and continue processing.
-// * If the subscriber belongs to a group, then capture the lock.
+/*
+Parse a gilmour Message and for subscribers of this topic do the following:
+	* If subscriber is one shot, unsubscribe the subscriber to prevent subscribers from re-execution.
+	* If subscriber belongs to a group, try acquiring a lock via backend to ensure group exclusivity.
+	* If all conditions suffice spin up a new goroutine for each subscription.
+*/
 func (g *Gilmour) processMessage(msg *protocol.Message) {
 	subs, ok := g.getSubscribers(msg.Key)
 	if !ok || len(subs) == 0 {
