@@ -14,7 +14,7 @@ func (r *Request) RawData() interface{} {
 }
 
 func (r *Request) Data(t interface{}) {
-	r.gData.Unmarshal(t)
+	r.gData.Receive(t)
 }
 
 func (r *Request) Topic() string {

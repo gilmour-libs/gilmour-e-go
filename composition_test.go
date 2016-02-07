@@ -84,7 +84,7 @@ func TestCompositionExecute(t *testing.T) {
 	c := engine.NewRequestComposition(topicOne)
 
 	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
-	m.Unmarshal(&data)
+	m.Receive(&data)
 
 	for _, key := range []string{"input", "ack-one"} {
 		if _, ok := data[key]; !ok {
@@ -98,7 +98,7 @@ func TestCompositionMergeExecute(t *testing.T) {
 	c := engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
 
 	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
-	m.Unmarshal(&data)
+	m.Receive(&data)
 
 	for _, key := range []string{"input", "ack-one", "merge-one"} {
 		if _, ok := data[key]; !ok {
@@ -115,7 +115,7 @@ func TestComposePipe(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.Receive(&expected)
 
 	if _, ok := expected["merge"]; !ok {
 		t.Error("Must have merge in final output")
@@ -134,7 +134,7 @@ func TestComposeComplex(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.Receive(&expected)
 
 	for _, key := range []string{"input", "merge-one", "ack-one", "merge-two", "ack-two"} {
 		if _, ok := expected[key]; !ok {
@@ -155,7 +155,7 @@ func TestComposeNested(t *testing.T) {
 
 	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.Receive(&expected)
 
 	for _, key := range []string{"input", "merge-one", "ack-one", "fake-two", "merge-two", "ack-two"} {
 		if _, ok := expected[key]; !ok {
@@ -177,7 +177,7 @@ func TestComposeAndAnd(t *testing.T) {
 
 	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.Receive(&expected)
 
 	for _, key := range []string{"merge", "ack-one"} {
 		if _, ok := expected[key]; ok {
@@ -218,7 +218,7 @@ func TestComposeBatchPass(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.Receive(&expected)
 
 	for _, key := range []string{"merge", "ack-one"} {
 		if _, ok := expected[key]; ok {
@@ -242,7 +242,7 @@ func TestComposeBatchWontFail(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.Receive(&expected)
 
 	if msg.GetCode() != 200 {
 		t.Error("Request should have passed")
@@ -286,7 +286,7 @@ func TestBatchRecordOutput(t *testing.T) {
 
 	for _, m := range out {
 		expected := StrMap{}
-		if err := m.Unmarshal(&expected); err != nil {
+		if err := m.Receive(&expected); err != nil {
 			t.Error("Must be valid message output")
 		} else if _, ok := expected["input"]; !ok {
 			log.Println(m.data)
@@ -329,7 +329,7 @@ func TestOrOr(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.Receive(&expected)
 
 	for _, key := range []string{"ack-three"} {
 		if _, ok := expected[key]; ok {
@@ -363,7 +363,7 @@ func TestParallel(t *testing.T) {
 	}
 
 	first := StrMap{}
-	out[0].Unmarshal(&first)
+	out[0].Receive(&first)
 	for _, key := range []string{"input", "ack-one", "merge-one"} {
 		if _, ok := first[key]; !ok {
 			t.Error("Must have", key, "in final output")
@@ -371,7 +371,7 @@ func TestParallel(t *testing.T) {
 	}
 
 	second := StrMap{}
-	out[1].Unmarshal(&second)
+	out[1].Receive(&second)
 	for _, key := range []string{"input", "ack-two", "merge-two"} {
 		if _, ok := second[key]; !ok {
 			t.Error("Must have", key, "in final output")
@@ -379,7 +379,7 @@ func TestParallel(t *testing.T) {
 	}
 
 	third := StrMap{}
-	out[2].Unmarshal(&third)
+	out[2].Receive(&third)
 	for _, key := range []string{"input", "ack-three", "merge-three"} {
 		if _, ok := third[key]; !ok {
 			t.Error("Must have", key, "in final output")

@@ -39,6 +39,17 @@ func (m *Message) Send(data interface{}) *Message {
 	return m
 }
 
+func (m *Message) Receive(t interface{}) error {
+	m.RLock()
+	defer m.RUnlock()
+
+	if byts, err := m.bytes(); err != nil {
+		return err
+	} else {
+		return json.Unmarshal(byts, t)
+	}
+}
+
 func (m *Message) GetCode() int {
 	m.RLock()
 	defer m.RUnlock()
@@ -74,17 +85,6 @@ func (m *Message) Marshal() ([]byte, error) {
 	defer m.RUnlock()
 
 	return json.Marshal(pubMsg{m.data, m.code, m.sender})
-}
-
-func (m *Message) Unmarshal(t interface{}) error {
-	m.RLock()
-	defer m.RUnlock()
-
-	if byts, err := m.bytes(); err != nil {
-		return err
-	} else {
-		return json.Unmarshal(byts, t)
-	}
 }
 
 func parseMessage(data interface{}) (resp *Message, err error) {
