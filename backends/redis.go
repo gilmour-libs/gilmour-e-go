@@ -95,10 +95,10 @@ func (r *Redis) ReportError(method string, message protocol.Error) (err error) {
 	defer conn.Close()
 
 	switch method {
-	case protocol.PUBLISH:
+	case protocol.ErrorPolicyPublish:
 		err = r.Publish(protocol.ErrorTopic, message)
 
-	case protocol.QUEUE:
+	case protocol.ErrorPolicyQueue:
 		msg, merr := message.Marshal()
 		if merr != nil {
 			err = merr

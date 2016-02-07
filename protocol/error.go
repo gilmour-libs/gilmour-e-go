@@ -1,10 +1,10 @@
 package protocol
 
 const (
-	QUEUE      = "queue"
-	PUBLISH    = "publish"
-	BLANK      = ""
-	ErrorTopic = "gilmour.errors"
+	ErrorPolicyQueue   = "queue"
+	ErrorPolicyPublish = "publish"
+	ErrorPolicyIgnore  = ""
+	ErrorTopic         = "gilmour.errors"
 )
 
 type Error interface {

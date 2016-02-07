@@ -93,7 +93,7 @@ func (g *Gilmour) processMessage(msg *protocol.Message) {
 			go g.UnsubscribeReply(msg.Key, s)
 		}
 
-		if opts.GetGroup() != protocol.BLANK {
+		if opts.GetGroup() != "" {
 			if !g.backend.AcquireGroupLock(opts.GetGroup(), m.GetSender()) {
 				ui.Warn(
 					"Unable to acquire Lock. Topic %v Group %v Sender %v",
@@ -193,7 +193,7 @@ func (g *Gilmour) getIdent() string {
 	g.identMutex.Lock()
 	defer g.identMutex.Unlock()
 
-	if g.ident == protocol.BLANK {
+	if g.ident == "" {
 		g.ident = protocol.MakeIdent()
 	}
 
@@ -302,12 +302,13 @@ following policies:
 Error messages are forwarded to the configured backend alongwith policy.
 */
 func (g *Gilmour) SetErrorPolicy(policy string) {
-	if policy != protocol.QUEUE &&
-		policy != protocol.PUBLISH &&
-		policy != protocol.BLANK {
+	if policy != protocol.ErrorPolicyQueue &&
+		policy != protocol.ErrorPolicyPublish &&
+		policy != protocol.ErrorPolicyIgnore {
 		panic(errors.New(fmt.Sprintf(
 			"error policy can only be %v, %v or %v",
-			protocol.QUEUE, protocol.PUBLISH, protocol.BLANK,
+			protocol.ErrorPolicyQueue, protocol.ErrorPolicyPublish,
+			protocol.ErrorPolicyIgnore,
 		)))
 	}
 
