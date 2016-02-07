@@ -15,7 +15,7 @@ const defaultIdentKey = "gilmour.known_host.health"
 const defaultErrorBuffer = 9999
 
 func MakeRedis(host, password string) *Redis {
-	redisPool := GetPool(host, password)
+	redisPool := getPool(host, password)
 	return &Redis{
 		redisPool:  redisPool,
 		pubsubConn: redis.PubSubConn{Conn: redisPool.Get()},
@@ -28,16 +28,35 @@ type Redis struct {
 	sync.Mutex
 }
 
-func (self *Redis) getPubSubConn() redis.PubSubConn {
-	return self.pubsubConn
+func (r *Redis) getPubSubConn() redis.PubSubConn {
+	return r.pubsubConn
 }
 
-func (self *Redis) GetConn() redis.Conn {
-	return self.redisPool.Get()
+func (r *Redis) getConn() redis.Conn {
+	return r.redisPool.Get()
 }
 
-func (self *Redis) HasActiveSubscribers(topic string) (bool, error) {
-	conn := self.GetConn()
+func (r *Redis) IsTopicSubscribed(topic string) (bool, error) {
+	conn := r.getConn()
+	defer conn.Close()
+
+	idents, err2 := redis.Strings(conn.Do("PUBSUB", "CHANNELS"))
+	if err2 != nil {
+		log.Println(err2.Error())
+		return false, err2
+	}
+
+	for _, t := range idents {
+		if t == topic {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (r *Redis) HasActiveSubscribers(topic string) (bool, error) {
+	conn := r.getConn()
 	defer conn.Close()
 
 	data, err := redis.IntMap(conn.Do("PUBSUB", "NUMSUB", topic))
@@ -49,8 +68,8 @@ func (self *Redis) HasActiveSubscribers(topic string) (bool, error) {
 	}
 }
 
-func (self *Redis) AcquireGroupLock(group, sender string) bool {
-	conn := self.GetConn()
+func (r *Redis) AcquireGroupLock(group, sender string) bool {
+	conn := r.getConn()
 	defer conn.Close()
 
 	key := sender + group
@@ -67,17 +86,17 @@ func (self *Redis) AcquireGroupLock(group, sender string) bool {
 	return true
 }
 
-func (self *Redis) getErrorQueue() string {
+func (r *Redis) getErrorQueue() string {
 	return defaultErrorQueue
 }
 
-func (self *Redis) ReportError(method string, message *protocol.Error) (err error) {
-	conn := self.GetConn()
+func (r *Redis) ReportError(method string, message *protocol.Error) (err error) {
+	conn := r.getConn()
 	defer conn.Close()
 
 	switch method {
 	case protocol.PUBLISH:
-		err = self.Publish(protocol.ErrorTopic, message)
+		err = r.Publish(protocol.ErrorTopic, message)
 
 	case protocol.QUEUE:
 		msg, merr := message.Marshal()
@@ -86,7 +105,7 @@ func (self *Redis) ReportError(method string, message *protocol.Error) (err erro
 			return
 		}
 
-		queue := self.getErrorQueue()
+		queue := r.getErrorQueue()
 		conn.Send("LPUSH", queue, string(msg))
 		conn.Send("LTRIM", queue, 0, defaultErrorBuffer)
 
@@ -97,37 +116,37 @@ func (self *Redis) ReportError(method string, message *protocol.Error) (err erro
 	return err
 }
 
-func (self *Redis) Unsubscribe(topic string) (err error) {
-	self.Lock()
-	defer self.Unlock()
+func (r *Redis) Unsubscribe(topic string) (err error) {
+	r.Lock()
+	defer r.Unlock()
 
 	if strings.HasSuffix(topic, "*") {
-		err = self.getPubSubConn().PUnsubscribe(topic)
+		err = r.getPubSubConn().PUnsubscribe(topic)
 	} else {
-		err = self.getPubSubConn().Unsubscribe(topic)
+		err = r.getPubSubConn().Unsubscribe(topic)
 	}
 
 	return
 }
 
-func (self *Redis) Subscribe(topic, group string) (err error) {
-	self.Lock()
-	defer self.Unlock()
+func (r *Redis) Subscribe(topic, group string) (err error) {
+	r.Lock()
+	defer r.Unlock()
 
 	if strings.HasSuffix(topic, "*") {
-		err = self.getPubSubConn().PSubscribe(topic)
+		err = r.getPubSubConn().PSubscribe(topic)
 	} else {
-		err = self.getPubSubConn().Subscribe(topic)
+		err = r.getPubSubConn().Subscribe(topic)
 	}
 
 	return
 }
 
-func (self *Redis) GetHealthIdent() string {
+func (r *Redis) getHealthIdent() string {
 	return defaultIdentKey
 }
 
-func (self *Redis) Publish(topic string, message interface{}) (err error) {
+func (r *Redis) Publish(topic string, message interface{}) (err error) {
 	var msg string
 	switch t := message.(type) {
 	case string:
@@ -147,40 +166,47 @@ func (self *Redis) Publish(topic string, message interface{}) (err error) {
 		return
 	}
 
-	conn := self.GetConn()
+	conn := r.getConn()
 	defer conn.Close()
 
 	_, err = conn.Do("PUBLISH", topic, msg)
 	return
 }
 
-func (self *Redis) RegisterIdent(uuid string) error {
-	conn := self.GetConn()
+func (r *Redis) ActiveIdents() (map[string]string, error) {
+	conn := r.getConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HSET", self.GetHealthIdent(), uuid, "true")
+	return redis.StringMap(conn.Do("HGETALL", r.getHealthIdent()))
+}
+
+func (r *Redis) RegisterIdent(uuid string) error {
+	conn := r.getConn()
+	defer conn.Close()
+
+	_, err := conn.Do("HSET", r.getHealthIdent(), uuid, "true")
 	return err
 }
 
-func (self *Redis) UnregisterIdent(uuid string) error {
-	conn := self.GetConn()
+func (r *Redis) UnregisterIdent(uuid string) error {
+	conn := r.getConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HDEL", self.GetHealthIdent(), uuid)
+	_, err := conn.Do("HDEL", r.getHealthIdent(), uuid)
 	return err
 }
 
-func (self *Redis) Start(sink chan<- *protocol.Message) {
-	self.setupListeners(sink)
+func (r *Redis) Start(sink chan<- *protocol.Message) {
+	r.setupListeners(sink)
 }
 
-func (self *Redis) Stop() {
+func (r *Redis) Stop() {
 }
 
-func (self *Redis) setupListeners(sink chan<- *protocol.Message) {
+func (r *Redis) setupListeners(sink chan<- *protocol.Message) {
 	go func() {
 		for {
-			switch v := self.getPubSubConn().Receive().(type) {
+			switch v := r.getPubSubConn().Receive().(type) {
 			case redis.PMessage:
 				msg := &protocol.Message{"pmessage", v.Channel, v.Data, v.Pattern}
 				sink <- msg

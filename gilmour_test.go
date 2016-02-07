@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	redigo "github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
@@ -51,23 +50,7 @@ func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
 		topic = engine.requestDestination(topic)
 	}
 
-	conn := redis.GetConn()
-	defer conn.Close()
-
-	idents, err2 := redigo.Strings(conn.Do("PUBSUB", "CHANNELS"))
-	if err2 != nil {
-		log.Println(err2.Error())
-		return false, err2
-	}
-
-	for _, t := range idents {
-		log.Println(t)
-		if t == topic {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return redis.IsTopicSubscribed(topic)
 }
 
 func TestHealthSubscribe(t *testing.T) {
@@ -185,10 +168,7 @@ func TestPublisherSleep(t *testing.T) {
 }
 
 func TestHealthGetAll(t *testing.T) {
-	conn := redis.GetConn()
-	defer conn.Close()
-
-	idents, err := redigo.StringMap(conn.Do("HGETALL", redis.GetHealthIdent()))
+	idents, err := redis.ActiveIdents()
 	if err != nil {
 		t.Error(err)
 	}
