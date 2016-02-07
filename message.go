@@ -61,7 +61,7 @@ func (m *Message) GetSender() string {
 	return m.sender
 }
 
-func (m *Message) SetSender(sender string) *Message {
+func (m *Message) setSender(sender string) *Message {
 	m.Lock()
 	defer m.Unlock()
 
@@ -110,6 +110,6 @@ func parseMessage(data interface{}) (resp *Message, err error) {
 
 func NewMessage() *Message {
 	x := &Message{}
-	x.SetSender(protocol.MakeSenderId())
+	x.setSender(protocol.MakeSenderId())
 	return x
 }

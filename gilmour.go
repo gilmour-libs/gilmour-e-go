@@ -113,7 +113,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 	req := NewRequest(topic, m)
 
 	res := &Message{}
-	res.SetSender(responseTopic(senderId))
+	res.setSender(responseTopic(senderId))
 
 	done := make(chan bool, 1)
 
@@ -179,7 +179,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 
 func (g *Gilmour) sendTimeout(senderId, channel string) {
 	msg := &Message{}
-	msg.SetSender(senderId).SetCode(499).Send("Execution timed out")
+	msg.setSender(senderId).SetCode(499).Send("Execution timed out")
 	if err := g.publish(channel, msg); err != nil {
 		ui.Alert(err.Error())
 	}
@@ -376,7 +376,7 @@ func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender
 	}
 
 	sender = protocol.MakeSenderId()
-	msg.SetSender(sender)
+	msg.setSender(sender)
 
 	if opts == nil {
 		opts = NewRequestOpts()
@@ -456,7 +456,7 @@ func (g *Gilmour) Signal(topic string, msg *Message) (sender string, err error) 
 	}
 
 	sender = protocol.MakeSenderId()
-	msg.SetSender(sender)
+	msg.setSender(sender)
 	return sender, g.publish(g.slotDestination(topic), msg)
 }
 
