@@ -28,11 +28,6 @@ func (m *Message) bytes() ([]byte, error) {
 }
 
 func (m *Message) Send(data interface{}) *Message {
-	m.SetData(data)
-	return m
-}
-
-func (m *Message) SetData(data interface{}) *Message {
 	m.Lock()
 	defer m.Unlock()
 

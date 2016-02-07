@@ -26,6 +26,6 @@ func subscribeHealth(g *Gilmour) {
 			}
 		}
 
-		w.SetData(topics)
+		w.Send(topics)
 	}, handlerOpts)
 }

@@ -49,7 +49,7 @@ func init() {
 
 func makeMessage(data interface{}) *Message {
 	m := new(Message)
-	m.SetData(data)
+	m.Send(data)
 	return m
 }
 
