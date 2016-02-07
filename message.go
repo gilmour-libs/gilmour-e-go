@@ -3,8 +3,6 @@ package gilmour
 import (
 	"encoding/json"
 	"sync"
-
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
 )
 
 type pubMsg struct {
@@ -110,6 +108,6 @@ func parseMessage(data interface{}) (resp *Message, err error) {
 
 func NewMessage() *Message {
 	x := &Message{}
-	x.setSender(protocol.MakeSenderId())
+	x.setSender(makeSenderId())
 	return x
 }

@@ -1,4 +1,4 @@
-package protocol
+package gilmour
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ func getUUID() string {
 	return uuid.New()
 }
 
-func MakeIdent() string {
+func makeIdent() string {
 	hostname := getHostname()
 	pid := getPid()
 	uuid := getUUID()
@@ -31,6 +31,6 @@ func MakeIdent() string {
 	return fmt.Sprintf("%v-pid-%v-uuid-%v", hostname, pid, uuid)
 }
 
-func MakeSenderId() string {
+func makeSenderId() string {
 	return getUUID()
 }

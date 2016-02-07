@@ -194,7 +194,7 @@ func (g *Gilmour) getIdent() string {
 	defer g.identMutex.Unlock()
 
 	if g.ident == "" {
-		g.ident = protocol.MakeIdent()
+		g.ident = makeIdent()
 	}
 
 	return g.ident
@@ -376,7 +376,7 @@ func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender
 		msg = NewMessage()
 	}
 
-	sender = protocol.MakeSenderId()
+	sender = makeSenderId()
 	msg.setSender(sender)
 
 	if opts == nil {
@@ -456,7 +456,7 @@ func (g *Gilmour) Signal(topic string, msg *Message) (sender string, err error) 
 		msg = NewMessage()
 	}
 
-	sender = protocol.MakeSenderId()
+	sender = makeSenderId()
 	msg.setSender(sender)
 	return sender, g.publish(g.slotDestination(topic), msg)
 }
