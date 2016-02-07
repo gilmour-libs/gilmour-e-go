@@ -14,18 +14,17 @@ type pubMsg struct {
 }
 
 type Message struct {
-	data   interface{} `json:"data"`
-	code   int         `json:"code"`
-	sender string      `json:"sender"`
-	sync.Mutex
+	data   interface{}
+	code   int
+	sender string
+	sync.RWMutex
 }
 
-func (m *Message) StringData() ([]byte, error) {
+func (m *Message) bytes() ([]byte, error) {
+	m.RLock()
+	defer m.RUnlock()
+
 	return json.Marshal(m.data)
-}
-
-func (m *Message) GetData() interface{} {
-	return m.data
 }
 
 func (m *Message) Send(data interface{}) *Message {
@@ -46,29 +45,47 @@ func (m *Message) SetData(data interface{}) *Message {
 }
 
 func (m *Message) GetCode() int {
+	m.RLock()
+	defer m.RUnlock()
+
 	return m.code
 }
 
 func (m *Message) SetCode(code int) *Message {
+	m.Lock()
+	defer m.Unlock()
+
 	m.code = code
 	return m
 }
 
 func (m *Message) GetSender() string {
+	m.RLock()
+	defer m.RUnlock()
+
 	return m.sender
 }
 
 func (m *Message) SetSender(sender string) *Message {
+	m.Lock()
+	defer m.Unlock()
+
 	m.sender = sender
 	return m
 }
 
 func (m *Message) Marshal() ([]byte, error) {
+	m.RLock()
+	defer m.RUnlock()
+
 	return json.Marshal(pubMsg{m.data, m.code, m.sender})
 }
 
 func (m *Message) Unmarshal(t interface{}) error {
-	if byts, err := m.StringData(); err != nil {
+	m.RLock()
+	defer m.RUnlock()
+
+	if byts, err := m.bytes(); err != nil {
 		return err
 	} else {
 		return json.Unmarshal(byts, t)

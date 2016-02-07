@@ -25,8 +25,8 @@ func (r *Request) Code() int {
 	return r.gData.GetCode()
 }
 
-func (r *Request) StringData() []byte {
-	byt, _ := r.gData.StringData()
+func (r *Request) bytes() []byte {
+	byt, _ := r.gData.bytes()
 	return byt
 }
 

@@ -171,7 +171,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 		// Inform the error catcher, If there is no handler for this Request
 		// but the request had failed. This is automatically handled in case
 		// of a response being written via Publisher.
-		request := string(req.StringData())
+		request := string(req.bytes())
 		errMsg := protocol.MakeError(499, topic, request, "", req.Sender(), "")
 		g.reportError(errMsg)
 	}
