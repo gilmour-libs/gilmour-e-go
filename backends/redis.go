@@ -90,7 +90,7 @@ func (r *Redis) getErrorQueue() string {
 	return defaultErrorQueue
 }
 
-func (r *Redis) ReportError(method string, message *protocol.Error) (err error) {
+func (r *Redis) ReportError(method string, message protocol.Error) (err error) {
 	conn := r.getConn()
 	defer conn.Close()
 

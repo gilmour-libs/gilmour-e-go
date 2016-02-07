@@ -172,7 +172,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 		// but the request had failed. This is automatically handled in case
 		// of a response being written via Publisher.
 		request := string(req.bytes())
-		errMsg := protocol.MakeError(499, topic, request, "", req.Sender(), "")
+		errMsg := makeError(499, topic, request, "", req.Sender(), "")
 		g.reportError(errMsg)
 	}
 }
@@ -319,10 +319,10 @@ func (g *Gilmour) GetErrorPolicy() string {
 	return g.errorPolicy
 }
 
-func (g *Gilmour) reportError(e *protocol.Error) {
+func (g *Gilmour) reportError(e *gilmourError) {
 	ui.Warn(
 		"Reporting Error. Code %v Sender %v Topic %v",
-		e.GetCode(), e.GetSender(), e.GetTopic(),
+		e.getCode(), e.getSender(), e.getTopic(),
 	)
 
 	err := g.backend.ReportError(g.GetErrorPolicy(), e)
@@ -474,13 +474,8 @@ func (g *Gilmour) publish(topic string, msg *Message) error {
 			}
 
 			g.reportError(
-				protocol.MakeError(
-					msg.GetCode(),
-					topic,
-					string(request),
-					"",
-					msg.GetSender(),
-					"",
+				makeError(
+					msg.GetCode(), topic, string(request), "", msg.GetSender(), "",
 				),
 			)
 
