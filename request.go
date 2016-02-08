@@ -13,8 +13,8 @@ func (r *Request) RawData() interface{} {
 	return r.gData.data
 }
 
-func (r *Request) Data(t interface{}) {
-	r.gData.Receive(t)
+func (r *Request) Data(t interface{}) error {
+	return r.gData.Receive(t)
 }
 
 func (r *Request) Topic() string {

@@ -14,7 +14,7 @@ const (
 
 type StrMap map[string]interface{}
 
-func Setup(e *Gilmour) {
+func setup(e *Gilmour) {
 	o := NewHandlerOpts()
 
 	e.ReplyTo(topicBadTwo, func(r *Request, s *Message) {
@@ -44,7 +44,7 @@ func Setup(e *Gilmour) {
 }
 
 func init() {
-	attachSetup(Setup)
+	attachSetup(setup)
 }
 
 func makeMessage(data interface{}) *Message {
