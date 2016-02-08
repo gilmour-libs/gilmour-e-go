@@ -11,8 +11,8 @@ import (
 
 const (
 	fibTopic = "fib"
-	FIRST    = 196418
-	SECOND   = 317811
+	FIRST    = 0
+	SECOND   = 1
 )
 
 func makeGilmour() *gilmour.Gilmour {
