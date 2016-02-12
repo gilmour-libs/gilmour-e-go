@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
@@ -40,10 +39,9 @@ func main() {
 	engine.Start()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		echoRequest(&wg, engine, fmt.Sprintf("Hello: %v", i))
-		time.Sleep(2 * time.Second)
+		go echoRequest(&wg, engine, fmt.Sprintf("Hello: %v", i))
 	}
 
 	wg.Wait()
