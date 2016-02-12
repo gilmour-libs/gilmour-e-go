@@ -93,7 +93,7 @@ func (g *Gilmour) processMessage(msg *protocol.Message) {
 			go g.UnsubscribeReply(msg.Key, s)
 		}
 
-		if opts.GetGroup() != "" {
+		if opts.GetGroup() != "" && opts.shouldSendResponse() {
 			if !g.backend.AcquireGroupLock(opts.GetGroup(), m.GetSender()) {
 				ui.Warn(
 					"Unable to acquire Lock. Topic %v Group %v Sender %v",
@@ -154,7 +154,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 
 	status := <-done
 
-	if !s.GetOpts().isSlot() {
+	if s.GetOpts().shouldSendResponse() {
 		if status == false {
 			g.sendTimeout(senderId, res.GetSender())
 		} else {
@@ -397,7 +397,7 @@ func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender
 	respChannel := responseTopic(sender)
 
 	//Wait for a responseHandler
-	rOpts := NewHandlerOpts().setOneShot().SetGroup("response")
+	rOpts := NewHandlerOpts().setOneShot().sendResponse(false)
 	g.ReplyTo(respChannel, opts.GetHandler(), rOpts)
 
 	timeout := opts.GetTimeout()

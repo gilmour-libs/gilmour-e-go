@@ -21,17 +21,19 @@ func makeGilmour() *gilmour.Gilmour {
 	return engine
 }
 
+func fibRequest(req *gilmour.Request, resp *gilmour.Message) {
+	pack := map[string]float64{}
+	req.Data(&pack)
+
+	next := pack["first"] + pack["second"]
+	fmt.Printf("First %.0f Second %.0f Next %.0f \n",
+		pack["first"], pack["second"], next)
+	resp.Send(next)
+}
+
 func bindListeners(e *gilmour.Gilmour) {
 	o := gilmour.NewHandlerOpts().SetGroup(fibTopic)
-
-	e.ReplyTo(fibTopic, func(req *gilmour.Request, resp *gilmour.Message) {
-		pack := map[string]float64{}
-		req.Data(&pack)
-
-		next := pack["first"] + pack["second"]
-		fmt.Printf("First %.0f Second %.0f Next %.0f \n", pack["first"], pack["second"], next)
-		resp.Send(next)
-	}, o)
+	e.ReplyTo(fibTopic, fibRequest, o)
 }
 
 func generator(first, second float64, tick <-chan time.Time, e *gilmour.Gilmour) {

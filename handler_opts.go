@@ -11,10 +11,11 @@ subscription. The struct allows chaining and can conveniently be used like
 x := NewHandlerOpts().SetTimeout(500).SetGroup("hello-world")
 */
 type HandlerOpts struct {
-	group   string
-	timeout int
-	oneShot bool
-	_isSlot bool
+	group       string
+	timeout     int
+	oneShot     bool
+	_noResponse bool
+	_isSlot     bool
 	sync.RWMutex
 }
 
@@ -86,10 +87,26 @@ func (h *HandlerOpts) isSlot() bool {
 	return h._isSlot
 }
 
+func (h *HandlerOpts) sendResponse(ok bool) *HandlerOpts {
+	h.Lock()
+	defer h.Unlock()
+
+	h._noResponse = !ok
+	return h
+}
+
+func (h *HandlerOpts) shouldSendResponse() bool {
+	h.RLock()
+	defer h.RUnlock()
+
+	return !h._noResponse
+}
+
 func (h *HandlerOpts) setSlot() *HandlerOpts {
 	h.Lock()
 	defer h.Unlock()
 
+	h._noResponse = true
 	h._isSlot = true
 	return h
 }
