@@ -7,7 +7,6 @@ import (
 
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
 const echoTopic = "echo"
@@ -37,7 +36,6 @@ func echoRequest(wg *sync.WaitGroup, engine *gilmour.Gilmour, msg string) {
 }
 
 func main() {
-	ui.SetLevel(ui.Levels.Message)
 	engine := echoEngine()
 	engine.Start()
 

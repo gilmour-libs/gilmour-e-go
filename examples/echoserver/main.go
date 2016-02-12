@@ -6,7 +6,6 @@ import (
 
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
 const echoTopic = "echo"
@@ -30,7 +29,6 @@ func bindListeners(g *gilmour.Gilmour) {
 }
 
 func main() {
-	ui.SetLevel(ui.Levels.Message)
 	engine := echoEngine()
 	bindListeners(engine)
 
