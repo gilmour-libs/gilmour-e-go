@@ -82,7 +82,7 @@ func popularReply(g *G.Gilmour, wordLen int) func(req *G.Request, resp *G.Messag
 		score := []int{}
 
 		for k, v := range input {
-			if len(k) <= wordLen {
+			if len(k) != wordLen {
 				continue
 			}
 			popular[v] = append(popular[v], k)
