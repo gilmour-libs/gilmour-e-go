@@ -13,6 +13,35 @@ func echoEngine() *G.Gilmour {
 	return engine
 }
 
+type MyComposer struct {
+}
+
+func (m *MyComposer) Execute(msg *G.Message) <-chan *G.Message {
+	out := []*G.Message{}
+	msg.Receive(&out)
+
+	pWords := make([][]string, 3)
+
+	for _, o := range out {
+		popular := struct {
+			WordLength int
+			Score      int
+			Words      []string
+		}{}
+		o.Receive(&popular)
+		pWords[popular.WordLength-3] = popular.Words
+	}
+
+	outChan := make(chan *G.Message, 1)
+	outChan <- G.NewMessage().Send(pWords)
+	close(outChan)
+	return outChan
+}
+
+func (m *MyComposer) IsStreaming() bool {
+	return false
+}
+
 func main() {
 	engine := echoEngine()
 	engine.Start()
@@ -25,21 +54,19 @@ func main() {
 			engine.NewRequestComposition("example.popular4"),
 			engine.NewRequestComposition("example.popular5"),
 		),
+		&MyComposer{},
 	)
 
 	data := G.NewMessage()
 	data.Send("https://s3-us-west-1.amazonaws.com/ds-data-sample/test.txt")
 
-	out := []*G.Message{}
-	(<-batch.Execute(data)).Receive(&out)
-
-	for _, msg := range out {
-		popular := struct {
-			WordLength int
-			Score      int
-			Words      []string
-		}{}
-		msg.Receive(&popular)
-		log.Println(popular)
+	msg := <-batch.Execute(data)
+	expected := [][]string{}
+	if err := msg.Receive(&expected); err != nil {
+		log.Println(err)
+	} else {
+		for ix, words := range expected {
+			log.Printf("Popular %v letter words: %v\n", ix+3, words)
+		}
 	}
 }

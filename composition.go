@@ -87,10 +87,6 @@ func (hc *FuncComposer) IsStreaming() bool {
 	return false
 }
 
-func (hc *FuncComposer) isRecorded() bool {
-	return false
-}
-
 func (hc *FuncComposer) Execute(m *Message) <-chan *Message {
 	err := compositionMerge(&m.Data, &hc.seed)
 	if err != nil {
