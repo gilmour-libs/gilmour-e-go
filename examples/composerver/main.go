@@ -50,17 +50,30 @@ func fetchReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 	}
 }
 
-func countReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
+func wordsReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 	return func(req *G.Request, resp *G.Message) {
 		line := fmt.Sprintf("WordCount")
 		g.Signal("example.log", G.NewMessage().Send(line))
 
 		input := getInput(req)
-
 		wordRe := regexp.MustCompile("\\w+")
 		words := wordRe.FindAllString(input, -1)
+		resp.Send(words)
+	}
+}
+
+func countReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
+	return func(req *G.Request, resp *G.Message) {
+		line := fmt.Sprintf("WordCount")
+		g.Signal("example.log", G.NewMessage().Send(line))
+
+		input := []string{}
+		if err := req.Data(&input); err != nil {
+			panic(err)
+		}
+
 		word_counts := make(map[string]int)
-		for _, word := range words {
+		for _, word := range input {
 			word_counts[word]++
 		}
 
@@ -128,11 +141,40 @@ func saveReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 	}
 }
 
+func stopWordsReply(g *G.Gilmour, stopList *[]string) func(req *G.Request, resp *G.Message) {
+	return func(req *G.Request, resp *G.Message) {
+		line := fmt.Sprintf("Filtering out stop words")
+		g.Signal("example.log", G.NewMessage().Send(line))
+
+		words := []string{}
+		if err := req.Data(&words); err != nil {
+			panic(words)
+		}
+
+		stopMap := map[string]bool{}
+		for _, w := range *stopList {
+			stopMap[w] = true
+		}
+
+		filtered := []string{}
+		for _, w := range words {
+			if _, ok := stopMap[w]; !ok {
+				filtered = append(filtered, w)
+			}
+		}
+
+		resp.Send(filtered)
+
+	}
+}
+
 //Bind all service endpoints to their topics.
 func bindListeners(g *G.Gilmour) {
 	//Third argument is for Opts, which in this case is nil
 	g.ReplyTo("example.fetch", fetchReply(g), nil)
+	g.ReplyTo("example.words", wordsReply(g), nil)
 	g.ReplyTo("example.count", countReply(g), nil)
+	g.ReplyTo("example.stopfilter", stopWordsReply(g, &stopWords), nil)
 	g.ReplyTo("example.popular3", popularReply(g, 3), nil)
 	g.ReplyTo("example.popular4", popularReply(g, 4), nil)
 	g.ReplyTo("example.popular5", popularReply(g, 5), nil)

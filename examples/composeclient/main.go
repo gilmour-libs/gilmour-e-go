@@ -48,6 +48,8 @@ func main() {
 
 	batch := engine.NewPipe(
 		engine.NewRequestComposition("example.fetch"),
+		engine.NewRequestComposition("example.words"),
+		engine.NewRequestComposition("example.stopfilter"),
 		engine.NewRequestComposition("example.count"),
 		engine.NewParallel(
 			engine.NewRequestComposition("example.popular3"),
