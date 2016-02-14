@@ -10,7 +10,7 @@ func (r *Request) Sender() string {
 }
 
 func (r *Request) RawData() interface{} {
-	return r.gData.data
+	return r.gData.Data
 }
 
 func (r *Request) Data(t interface{}) error {

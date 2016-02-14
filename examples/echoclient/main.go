@@ -4,22 +4,20 @@ import (
 	"fmt"
 	"sync"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4"
+	G "gopkg.in/gilmour-libs/gilmour-e-go.v4"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
 )
 
-const echoTopic = "echo"
-
-func echoEngine() *gilmour.Gilmour {
+func echoEngine() *G.Gilmour {
 	redis := backends.MakeRedis("127.0.0.1:6379", "")
-	engine := gilmour.Get(redis)
+	engine := G.Get(redis)
 	return engine
 }
 
-func echoRequest(wg *sync.WaitGroup, engine *gilmour.Gilmour, msg string) {
-	data := gilmour.NewMessage().Send(msg)
+func echoRequest(wg *sync.WaitGroup, engine *G.Gilmour, msg string) {
+	data := G.NewMessage().Send(msg)
 
-	handler := func(req *gilmour.Request, resp *gilmour.Message) {
+	handler := func(req *G.Request, resp *G.Message) {
 		defer wg.Done()
 
 		var msg string
@@ -30,8 +28,8 @@ func echoRequest(wg *sync.WaitGroup, engine *gilmour.Gilmour, msg string) {
 		}
 	}
 
-	opts := gilmour.NewRequestOpts().SetHandler(handler)
-	engine.Request(echoTopic, data, opts)
+	opts := G.NewRequestOpts().SetHandler(handler)
+	engine.Request("echo", data, opts)
 }
 
 func main() {

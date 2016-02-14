@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4"
+	G "gopkg.in/gilmour-libs/gilmour-e-go.v4"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
 )
 
@@ -15,13 +15,13 @@ const (
 	SECOND   = 1
 )
 
-func makeGilmour() *gilmour.Gilmour {
+func makeGilmour() *G.Gilmour {
 	redis := backends.MakeRedis("127.0.0.1:6379", "")
-	engine := gilmour.Get(redis)
+	engine := G.Get(redis)
 	return engine
 }
 
-func fibRequest(req *gilmour.Request, resp *gilmour.Message) {
+func fibRequest(req *G.Request, resp *G.Message) {
 	pack := map[string]float64{}
 	req.Data(&pack)
 
@@ -31,19 +31,19 @@ func fibRequest(req *gilmour.Request, resp *gilmour.Message) {
 	resp.Send(next)
 }
 
-func bindListeners(e *gilmour.Gilmour) {
-	o := gilmour.NewHandlerOpts().SetGroup(fibTopic)
+func bindListeners(e *G.Gilmour) {
+	o := G.NewHandlerOpts().SetGroup(fibTopic)
 	e.ReplyTo(fibTopic, fibRequest, o)
 }
 
-func generator(first, second float64, tick <-chan time.Time, e *gilmour.Gilmour) {
+func generator(first, second float64, tick <-chan time.Time, e *G.Gilmour) {
 	//Wait for a tick
 	<-tick
 
 	packet := map[string]float64{"first": first, "second": second}
-	data := gilmour.NewMessage().Send(packet)
+	data := G.NewMessage().Send(packet)
 
-	handler := func(req *gilmour.Request, resp *gilmour.Message) {
+	handler := func(req *G.Request, resp *G.Message) {
 		if req.Code() != 200 {
 			fmt.Println("Error in Handler", req.Code())
 			fmt.Println(req.RawData())
@@ -59,7 +59,7 @@ func generator(first, second float64, tick <-chan time.Time, e *gilmour.Gilmour)
 		generator(second, next, tick, e)
 	}
 
-	opts := gilmour.NewRequestOpts().SetHandler(handler)
+	opts := G.NewRequestOpts().SetHandler(handler)
 	e.Request(fibTopic, data, opts)
 }
 

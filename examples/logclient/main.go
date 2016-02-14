@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"sync"
 
 	G "gopkg.in/gilmour-libs/gilmour-e-go.v4"
@@ -14,21 +14,19 @@ func echoEngine() *G.Gilmour {
 	return engine
 }
 
-func echoReply(req *G.Request, resp *G.Message) {
-	var msg string
-	req.Data(&msg)
-	fmt.Println("Echoserver: received", msg)
-	resp.Send(fmt.Sprintf("Pong %v", msg))
-}
-
-func bindListeners(g *G.Gilmour) {
-	opts := G.NewHandlerOpts().SetGroup("exclusive")
-	g.ReplyTo("echo", echoReply, opts)
-}
-
 func main() {
+	log.SetFlags(log.LstdFlags | log.Llongfile)
+
 	engine := echoEngine()
-	bindListeners(engine)
+	engine.Slot("example.log", func(req *G.Request, _ *G.Message) {
+		var msg string
+		if err := req.Data(&msg); err != nil {
+			log.Println("Cannot parse log %v", err.Error())
+			return
+		}
+
+		log.Println(req.Sender(), "->", msg)
+	}, nil)
 
 	engine.Start()
 
