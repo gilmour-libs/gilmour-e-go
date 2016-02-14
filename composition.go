@@ -53,10 +53,15 @@ func performJob(cmd Composer, m *Message) *Message {
 	if cmd.IsStreaming() {
 		// Keep receiving what the channel keeps giving.
 		buf := []*Message{}
+		code := 200
 		for msg := range jobOutput {
+			// Code must be set to the highest code in the Output.
+			if msg.GetCode() > code {
+				code = msg.GetCode()
+			}
 			buf = append(buf, msg)
 		}
-		toSend = NewMessage().Send(buf)
+		toSend = NewMessage().SetCode(code).Send(buf)
 	} else {
 		//Single Message is to be sent.
 		toSend = <-jobOutput
