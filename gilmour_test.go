@@ -70,7 +70,7 @@ func TestSubscribePing(t *testing.T) {
 		req.Data(&x)
 		ui.Message("Topic %v Received %v", PingTopic, x)
 		ui.Message("Topic %v Sending %v", PingTopic, PingResponse)
-		resp.Send(PingResponse)
+		resp.SetData(PingResponse)
 	}, handler_opts)
 
 	if err != nil {
@@ -92,7 +92,7 @@ func TestSubscribePing(t *testing.T) {
 func TestSubscribePingResponse(t *testing.T) {
 	done := make(chan bool, 1)
 
-	data := NewMessage().Send("ping?")
+	data := NewMessage().SetData("ping?")
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		var recv string
 		req.Data(&recv)
@@ -114,7 +114,7 @@ func TestSubscribePingResponse(t *testing.T) {
 }
 
 func TestSubscribePingSync(t *testing.T) {
-	data := NewMessage().Send("ping?")
+	data := NewMessage().SetData("ping?")
 	req, err := engine.SyncRequest(PingTopic, data, nil)
 	if err != nil {
 		t.Error("Error in sync response", err.Error())
@@ -153,7 +153,7 @@ func TestPublisherSleep(t *testing.T) {
 			var delay int
 			req.Data(&delay)
 			time.Sleep(time.Duration(delay) * time.Second)
-			resp.Send(PingResponse)
+			resp.SetData(PingResponse)
 		}, nil,
 	)
 
@@ -303,7 +303,7 @@ func TestSignalSlotStruct(t *testing.T) {
 	data := slotStruct{[]string{"a", "b", "c"}}
 
 	//Publish a message to random topic
-	engine.Signal(topic, NewMessage().Send(data))
+	engine.Signal(topic, NewMessage().SetData(data))
 
 	// Select Case, once and that should work.
 	select {
@@ -338,7 +338,7 @@ func TestSignalSlotStructFailed(t *testing.T) {
 	data := failedSlotStruct{[]string{"a", "b", "c"}}
 
 	//Publish a message to random topic
-	engine.Signal(topic, NewMessage().Send(data))
+	engine.Signal(topic, NewMessage().SetData(data))
 
 	// Select Case, once and that should work.
 	select {
@@ -391,7 +391,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 	}
 
 	//Publish a message to random topic
-	engine.Signal(topic, NewMessage().Send("ping?"))
+	engine.Signal(topic, NewMessage().SetData("ping?"))
 
 	// Select Case, once and that should work.
 	for i := 0; i < count; i++ {
@@ -412,7 +412,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 func TestHealthResponse(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	data := NewMessage().Send("is-healthy?")
+	data := NewMessage().SetData("is-healthy?")
 
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		x := []string{}
@@ -454,7 +454,7 @@ func TestReceiveOnWildcard(t *testing.T) {
 	)
 
 	//Publish a message to random topic
-	engine.Signal("pingworld", NewMessage().Send("ping?"))
+	engine.Signal("pingworld", NewMessage().SetData("ping?"))
 
 	// Select Case, once and that should work.
 	select {
@@ -476,7 +476,7 @@ func TestReceiveOnWildcard(t *testing.T) {
 func TestSendAndReceive(t *testing.T) {
 	out_chan := make(chan string, 1)
 
-	data := NewMessage().Send("ping?")
+	data := NewMessage().SetData("ping?")
 
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		var x string
@@ -504,7 +504,7 @@ func TestPublisherTimeout(t *testing.T) {
 
 	sleepFor := 5
 
-	data := NewMessage().Send(sleepFor)
+	data := NewMessage().SetData(sleepFor)
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
@@ -557,7 +557,7 @@ func TestSubscriberTimeout(t *testing.T) {
 		topic,
 		func(req *Request, resp *Message) {
 			time.Sleep(time.Second * 4)
-			resp.Send(PingResponse)
+			resp.SetData(PingResponse)
 		},
 		NewHandlerOpts().SetTimeout(2),
 	)
@@ -567,7 +567,7 @@ func TestSubscriberTimeout(t *testing.T) {
 		return
 	}
 
-	data := NewMessage().Send("send")
+	data := NewMessage().SetData("send")
 
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		var x string
@@ -604,7 +604,7 @@ func TestHandlerException(t *testing.T) {
 		return
 	}
 
-	data := NewMessage().Send("send")
+	data := NewMessage().SetData("send")
 
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
 		out_chan <- req.Code()
@@ -625,14 +625,14 @@ func TestHandlerException(t *testing.T) {
 }
 
 func TestSansListener(t *testing.T) {
-	data := NewMessage().Send("ping?")
+	data := NewMessage().SetData("ping?")
 	if _, err := engine.Signal("ping-sans-listener", data); err != nil {
 		t.Error(err)
 	}
 }
 
 func TestConfirmSansListener(t *testing.T) {
-	data := NewMessage().Send("ping?")
+	data := NewMessage().SetData("ping?")
 	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {})
 
 	if _, err := engine.Request("ping-confirm-sans-listener", data, opts); err != nil {

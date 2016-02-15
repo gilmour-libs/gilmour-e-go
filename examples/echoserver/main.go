@@ -18,7 +18,7 @@ func echoReply(req *G.Request, resp *G.Message) {
 	var msg string
 	req.Data(&msg)
 	fmt.Println("Echoserver: received", msg)
-	resp.Send(fmt.Sprintf("Pong %v", msg))
+	resp.SetData(fmt.Sprintf("Pong %v", msg))
 }
 
 func bindListeners(g *G.Gilmour) {

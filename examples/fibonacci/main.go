@@ -28,7 +28,7 @@ func fibRequest(req *G.Request, resp *G.Message) {
 	next := pack["first"] + pack["second"]
 	fmt.Printf("First %.0f Second %.0f Next %.0f \n",
 		pack["first"], pack["second"], next)
-	resp.Send(next)
+	resp.SetData(next)
 }
 
 func bindListeners(e *G.Gilmour) {
@@ -41,7 +41,7 @@ func generator(first, second float64, tick <-chan time.Time, e *G.Gilmour) {
 	<-tick
 
 	packet := map[string]float64{"first": first, "second": second}
-	data := G.NewMessage().Send(packet)
+	data := G.NewMessage().SetData(packet)
 
 	handler := func(req *G.Request, resp *G.Message) {
 		if req.Code() != 200 {

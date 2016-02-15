@@ -18,7 +18,7 @@ type MyComposer struct {
 
 func (m *MyComposer) Execute(msg *G.Message) <-chan *G.Message {
 	out := []*G.Message{}
-	msg.Receive(&out)
+	msg.GetData(&out)
 
 	pWords := make([][]string, 3)
 
@@ -28,12 +28,12 @@ func (m *MyComposer) Execute(msg *G.Message) <-chan *G.Message {
 			Score      int
 			Words      []string
 		}{}
-		o.Receive(&popular)
+		o.GetData(&popular)
 		pWords[popular.WordLength-3] = popular.Words
 	}
 
 	outChan := make(chan *G.Message, 1)
-	outChan <- G.NewMessage().Send(pWords)
+	outChan <- G.NewMessage().SetData(pWords)
 	close(outChan)
 	return outChan
 }
@@ -60,11 +60,11 @@ func main() {
 	)
 
 	data := G.NewMessage()
-	data.Send("https://s3-us-west-1.amazonaws.com/ds-data-sample/test.txt")
+	data.SetData("https://s3-us-west-1.amazonaws.com/ds-data-sample/test.txt")
 
 	msg := <-batch.Execute(data)
 	expected := [][]string{}
-	if err := msg.Receive(&expected); err != nil {
+	if err := msg.GetData(&expected); err != nil {
 		log.Println(err)
 	} else {
 		for ix, words := range expected {

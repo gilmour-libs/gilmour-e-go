@@ -14,7 +14,7 @@ func (r *Request) RawData() interface{} {
 }
 
 func (r *Request) Data(t interface{}) error {
-	return r.gData.Receive(t)
+	return r.gData.GetData(t)
 }
 
 func (r *Request) Topic() string {

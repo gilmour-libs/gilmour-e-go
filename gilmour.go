@@ -133,7 +133,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
 			buffer := string(buf)
-			res.Send(buffer).SetCode(500)
+			res.SetData(buffer).SetCode(500)
 
 			done <- true
 
@@ -179,7 +179,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 
 func (g *Gilmour) sendTimeout(senderId, channel string) {
 	msg := &Message{}
-	msg.setSender(senderId).SetCode(499).Send("Execution timed out")
+	msg.setSender(senderId).SetCode(499).SetData("Execution timed out")
 	if err := g.publish(channel, msg); err != nil {
 		ui.Alert(err.Error())
 	}

@@ -15,7 +15,7 @@ func echoEngine() *G.Gilmour {
 }
 
 func echoRequest(wg *sync.WaitGroup, engine *G.Gilmour, msg string) {
-	data := G.NewMessage().Send(msg)
+	data := G.NewMessage().SetData(msg)
 
 	handler := func(req *G.Request, resp *G.Message) {
 		defer wg.Done()

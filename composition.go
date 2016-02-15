@@ -61,7 +61,7 @@ func performJob(cmd Composer, m *Message) *Message {
 			}
 			buf = append(buf, msg)
 		}
-		toSend = NewMessage().SetCode(code).Send(buf)
+		toSend = NewMessage().SetCode(code).SetData(buf)
 	} else {
 		//Single Message is to be sent.
 		toSend = <-jobOutput
@@ -97,7 +97,7 @@ func (hc *FuncComposer) Execute(m *Message) <-chan *Message {
 	if err != nil {
 		m := NewMessage()
 		m.SetCode(500)
-		m.Send(err.Error())
+		m.SetData(err.Error())
 	}
 
 	if m.GetCode() == 0 {
@@ -255,7 +255,7 @@ func (c *recordableComposition) RecordOutput() {
 
 func (c *recordableComposition) makeMessage(data interface{}) *Message {
 	m := NewMessage()
-	m.Send(data)
+	m.SetData(data)
 	m.SetCode(200)
 	return m
 }

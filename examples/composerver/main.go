@@ -31,7 +31,7 @@ func fetchReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 		url := getInput(req)
 
 		line := fmt.Sprintf("Fetch %v", url)
-		g.Signal("example.log", G.NewMessage().Send(line))
+		g.Signal("example.log", G.NewMessage().SetData(line))
 
 		response, err := http.Get(url)
 		if err != nil {
@@ -46,26 +46,26 @@ func fetchReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 		}
 
 		//Send back the contents.
-		resp.Send(string(contents))
+		resp.SetData(string(contents))
 	}
 }
 
 func wordsReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 	return func(req *G.Request, resp *G.Message) {
 		line := fmt.Sprintf("WordCount")
-		g.Signal("example.log", G.NewMessage().Send(line))
+		g.Signal("example.log", G.NewMessage().SetData(line))
 
 		input := getInput(req)
 		wordRe := regexp.MustCompile("\\w+")
 		words := wordRe.FindAllString(input, -1)
-		resp.Send(words)
+		resp.SetData(words)
 	}
 }
 
 func countReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 	return func(req *G.Request, resp *G.Message) {
 		line := fmt.Sprintf("WordCount")
-		g.Signal("example.log", G.NewMessage().Send(line))
+		g.Signal("example.log", G.NewMessage().SetData(line))
 
 		input := []string{}
 		if err := req.Data(&input); err != nil {
@@ -77,14 +77,14 @@ func countReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 			word_counts[word]++
 		}
 
-		resp.Send(word_counts)
+		resp.SetData(word_counts)
 	}
 }
 
 func popularReply(g *G.Gilmour, wordLen int) func(req *G.Request, resp *G.Message) {
 	return func(req *G.Request, resp *G.Message) {
 		line := fmt.Sprintf("Popular %v", wordLen)
-		g.Signal("example.log", G.NewMessage().Send(line))
+		g.Signal("example.log", G.NewMessage().SetData(line))
 
 		input := map[string]int{}
 		if err := req.Data(&input); err != nil {
@@ -117,34 +117,34 @@ func popularReply(g *G.Gilmour, wordLen int) func(req *G.Request, resp *G.Messag
 			output.Score = score[0]
 			output.Words = popular[score[0]]
 		}
-		resp.Send(output)
+		resp.SetData(output)
 	}
 }
 
 func findReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 	return func(req *G.Request, resp *G.Message) {
 		line := fmt.Sprintf("Find")
-		g.Signal("example.log", G.NewMessage().Send(line))
+		g.Signal("example.log", G.NewMessage().SetData(line))
 
 		input := getInput(req)
 
-		resp.Send(input)
+		resp.SetData(input)
 	}
 }
 
 func saveReply(g *G.Gilmour) func(req *G.Request, resp *G.Message) {
 	return func(req *G.Request, resp *G.Message) {
 		line := fmt.Sprintf("Save")
-		g.Signal("example.log", G.NewMessage().Send(line))
+		g.Signal("example.log", G.NewMessage().SetData(line))
 
-		resp.Send("Hello from Save")
+		resp.SetData("Hello from Save")
 	}
 }
 
 func stopWordsReply(g *G.Gilmour, stopList *[]string) func(req *G.Request, resp *G.Message) {
 	return func(req *G.Request, resp *G.Message) {
 		line := fmt.Sprintf("Filtering out stop words")
-		g.Signal("example.log", G.NewMessage().Send(line))
+		g.Signal("example.log", G.NewMessage().SetData(line))
 
 		words := []string{}
 		if err := req.Data(&words); err != nil {
@@ -163,7 +163,7 @@ func stopWordsReply(g *G.Gilmour, stopList *[]string) func(req *G.Request, resp 
 			}
 		}
 
-		resp.Send(filtered)
+		resp.SetData(filtered)
 
 	}
 }

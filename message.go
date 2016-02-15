@@ -19,7 +19,7 @@ func (m *Message) bytes() ([]byte, error) {
 	return json.Marshal(m.Data)
 }
 
-func (m *Message) Send(data interface{}) *Message {
+func (m *Message) SetData(data interface{}) *Message {
 	m.Lock()
 	defer m.Unlock()
 
@@ -31,7 +31,7 @@ func (m *Message) Send(data interface{}) *Message {
 	return m
 }
 
-func (m *Message) Receive(t interface{}) error {
+func (m *Message) GetData(t interface{}) error {
 	m.RLock()
 	defer m.RUnlock()
 
