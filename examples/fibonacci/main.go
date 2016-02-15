@@ -59,8 +59,7 @@ func generator(first, second float64, tick <-chan time.Time, e *G.Gilmour) {
 		generator(second, next, tick, e)
 	}
 
-	opts := G.NewRequestOpts().SetHandler(handler)
-	e.Request(fibTopic, data, opts)
+	e.Request(fibTopic, data, handler, nil)
 }
 
 func main() {

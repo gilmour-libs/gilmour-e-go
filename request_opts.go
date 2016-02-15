@@ -5,7 +5,6 @@ package gilmour
 type RequestOpts struct {
 	confirm bool
 	timeout int
-	handler Handler
 }
 
 func (r *RequestOpts) GetTimeout() int {
@@ -15,15 +14,6 @@ func (r *RequestOpts) GetTimeout() int {
 func (r *RequestOpts) SetTimeout(t int) *RequestOpts {
 	r.timeout = t
 	return r
-}
-
-func (r *RequestOpts) SetHandler(h Handler) *RequestOpts {
-	r.handler = h
-	return r
-}
-
-func (r *RequestOpts) GetHandler() Handler {
-	return r.handler
 }
 
 func NewRequestOpts() *RequestOpts {

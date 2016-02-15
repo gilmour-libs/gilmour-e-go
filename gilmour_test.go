@@ -93,7 +93,7 @@ func TestSubscribePingResponse(t *testing.T) {
 	done := make(chan bool, 1)
 
 	data := NewMessage().SetData("ping?")
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		var recv string
 		req.Data(&recv)
 
@@ -102,9 +102,9 @@ func TestSubscribePingResponse(t *testing.T) {
 		}
 
 		done <- true
-	})
+	}
 
-	_, err := engine.Request(PingTopic, data, opts)
+	_, err := engine.Request(PingTopic, data, handler, nil)
 	if err != nil {
 		t.Error("Error in response", err.Error())
 		return
@@ -414,7 +414,7 @@ func TestHealthResponse(t *testing.T) {
 
 	data := NewMessage().SetData("is-healthy?")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		x := []string{}
 		req.Data(&x)
 
@@ -423,9 +423,9 @@ func TestHealthResponse(t *testing.T) {
 		} else {
 			out_chan <- "false"
 		}
-	})
+	}
 
-	_, err := engine.Request(healthTopic(engine.getIdent()), data, opts)
+	_, err := engine.Request(healthTopic(engine.getIdent()), data, handler, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -478,13 +478,13 @@ func TestSendAndReceive(t *testing.T) {
 
 	data := NewMessage().SetData("ping?")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
-	})
+	}
 
-	_, err := engine.Request(PingTopic, data, opts)
+	_, err := engine.Request(PingTopic, data, handler, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -505,13 +505,14 @@ func TestPublisherTimeout(t *testing.T) {
 	sleepFor := 5
 
 	data := NewMessage().SetData(sleepFor)
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	opts := NewRequestOpts().SetTimeout(2)
+	handler := func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
-	}).SetTimeout(2)
+	}
 
-	_, err := engine.Request(SleepTopic, data, opts)
+	_, err := engine.Request(SleepTopic, data, handler, opts)
 	if err != nil {
 		t.Error(err)
 	}
@@ -534,16 +535,15 @@ func TestSansListenerSlot(t *testing.T) {
 }
 
 func TestSansHandlerRequest(t *testing.T) {
-	_, err := engine.Request("humpty-dumpty", nil, nil)
+	_, err := engine.Request("humpty-dumpty", nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "without a handler") {
 		t.Error(err.Error())
 	}
 }
 
 func TestSansListenerRequest(t *testing.T) {
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {})
-
-	_, err := engine.Request("humpty-dumpty", nil, opts)
+	handler := func(req *Request, resp *Message) {}
+	_, err := engine.Request("humpty-dumpty", nil, handler, nil)
 	if err == nil || !strings.Contains(err.Error(), "listeners") {
 		t.Error(err.Error())
 	}
@@ -569,13 +569,13 @@ func TestSubscriberTimeout(t *testing.T) {
 
 	data := NewMessage().SetData("send")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
-	})
+	}
 
-	engine.Request(topic, data, opts)
+	engine.Request(topic, data, handler, nil)
 
 	select {
 	case result := <-out_chan:
@@ -606,11 +606,11 @@ func TestHandlerException(t *testing.T) {
 
 	data := NewMessage().SetData("send")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		out_chan <- req.Code()
-	})
+	}
 
-	engine.Request(topic, data, opts)
+	engine.Request(topic, data, handler, nil)
 
 	select {
 	case result := <-out_chan:
@@ -633,9 +633,9 @@ func TestSansListener(t *testing.T) {
 
 func TestConfirmSansListener(t *testing.T) {
 	data := NewMessage().SetData("ping?")
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {})
+	handler := func(req *Request, resp *Message) {}
 
-	if _, err := engine.Request("ping-confirm-sans-listener", data, opts); err != nil {
+	if _, err := engine.Request("ping-confirm-sans-listener", data, handler, nil); err != nil {
 		if !strings.Contains(err.Error(), "active listeners") {
 			t.Error(err.Error())
 		}

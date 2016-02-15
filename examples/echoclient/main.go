@@ -28,8 +28,7 @@ func echoRequest(wg *sync.WaitGroup, engine *G.Gilmour, msg string) {
 		}
 	}
 
-	opts := G.NewRequestOpts().SetHandler(handler)
-	engine.Request("echo", data, opts)
+	engine.Request("echo", data, handler, nil)
 }
 
 func main() {

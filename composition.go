@@ -145,15 +145,15 @@ func (rc *RequestComposer) Execute(m *Message) <-chan *Message {
 
 	finally := outChan()
 
-	opts := NewRequestOpts().SetHandler(func(resp *Request, send *Message) {
+	handler := func(resp *Request, send *Message) {
 		if resp.gData.GetCode() == 0 {
 			resp.gData.SetCode(200)
 		}
 		finally <- resp.gData
 		close(finally)
-	})
+	}
 
-	rc.engine.Request(rc.topic, m, opts)
+	rc.engine.Request(rc.topic, m, handler, nil)
 	return finally
 }
 

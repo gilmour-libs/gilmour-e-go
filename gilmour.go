@@ -371,7 +371,7 @@ func (g *Gilmour) UnsubscribeReply(topic string, s *Subscription) {
 }
 
 // Request part of Request-Reply design pattern.
-func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender string, err error) {
+func (g *Gilmour) Request(topic string, msg *Message, handler Handler, opts *RequestOpts) (sender string, err error) {
 	if msg == nil {
 		msg = NewMessage()
 	}
@@ -383,8 +383,7 @@ func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender
 		opts = NewRequestOpts()
 	}
 
-	//If a handler is being supplied, subscribe to a response.
-	if opts.GetHandler() == nil {
+	if handler == nil {
 		return sender, errors.New("Cannot use Request without a handler")
 	}
 
@@ -398,7 +397,7 @@ func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender
 
 	//Wait for a responseHandler
 	rOpts := NewHandlerOpts().setOneShot().sendResponse(false)
-	g.ReplyTo(respChannel, opts.GetHandler(), rOpts)
+	g.ReplyTo(respChannel, handler, rOpts)
 
 	timeout := opts.GetTimeout()
 	if timeout > 0 {
@@ -413,6 +412,7 @@ func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender
 // Same as Request but emulates synchronous behavior. Will not return until you
 // have error or data.
 func (g *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*Request, error) {
+
 	var req *Request
 
 	var wg sync.WaitGroup
@@ -422,12 +422,12 @@ func (g *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*R
 		opts = NewRequestOpts()
 	}
 
-	opts.SetHandler(func(r *Request, _ *Message) {
+	handler := func(r *Request, resp *Message) {
 		defer wg.Done()
 		req = r
-	})
+	}
 
-	_, err := g.Request(topic, msg, opts)
+	_, err := g.Request(topic, msg, handler, opts)
 	if err != nil {
 		wg.Done()
 	}
