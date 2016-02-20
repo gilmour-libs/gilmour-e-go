@@ -1,9 +1,6 @@
 package gilmour
 
-import (
-	"log"
-	"testing"
-)
+import "testing"
 
 const (
 	topicOne    = "compose-one"
@@ -14,8 +11,8 @@ const (
 
 type StrMap map[string]interface{}
 
-func Setup(e *Gilmour) {
-	o := MakeHandlerOpts()
+func setup(e *Gilmour) {
+	o := NewHandlerOpts()
 
 	e.ReplyTo(topicBadTwo, func(r *Request, s *Message) {
 		panic("bad-two")
@@ -25,26 +22,26 @@ func Setup(e *Gilmour) {
 		req := StrMap{}
 		r.Data(&req)
 		compositionMerge(&req, &StrMap{"ack-one": "one"})
-		s.Send(req)
+		s.SetData(req)
 	}, o)
 
 	e.ReplyTo(topicTwo, func(r *Request, s *Message) {
 		req := StrMap{}
 		r.Data(&req)
 		compositionMerge(&req, &StrMap{"ack-two": "two"})
-		s.Send(req)
+		s.SetData(req)
 	}, o)
 
 	e.ReplyTo(topicThree, func(r *Request, s *Message) {
 		req := StrMap{}
 		r.Data(&req)
 		compositionMerge(&req, &StrMap{"ack-three": "three"})
-		s.Send(req)
+		s.SetData(req)
 	}, o)
 }
 
 func init() {
-	attachSetup(Setup)
+	attachSetup(setup)
 }
 
 func makeMessage(data interface{}) *Message {
@@ -84,7 +81,7 @@ func TestCompositionExecute(t *testing.T) {
 	c := engine.NewRequestComposition(topicOne)
 
 	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
-	m.Unmarshal(&data)
+	m.GetData(&data)
 
 	for _, key := range []string{"input", "ack-one"} {
 		if _, ok := data[key]; !ok {
@@ -98,7 +95,7 @@ func TestCompositionMergeExecute(t *testing.T) {
 	c := engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
 
 	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
-	m.Unmarshal(&data)
+	m.GetData(&data)
 
 	for _, key := range []string{"input", "ack-one", "merge-one"} {
 		if _, ok := data[key]; !ok {
@@ -115,7 +112,7 @@ func TestComposePipe(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.GetData(&expected)
 
 	if _, ok := expected["merge"]; !ok {
 		t.Error("Must have merge in final output")
@@ -134,7 +131,7 @@ func TestComposeComplex(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.GetData(&expected)
 
 	for _, key := range []string{"input", "merge-one", "ack-one", "merge-two", "ack-two"} {
 		if _, ok := expected[key]; !ok {
@@ -155,7 +152,7 @@ func TestComposeNested(t *testing.T) {
 
 	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.GetData(&expected)
 
 	for _, key := range []string{"input", "merge-one", "ack-one", "fake-two", "merge-two", "ack-two"} {
 		if _, ok := expected[key]; !ok {
@@ -177,7 +174,7 @@ func TestComposeAndAnd(t *testing.T) {
 
 	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.GetData(&expected)
 
 	for _, key := range []string{"merge", "ack-one"} {
 		if _, ok := expected[key]; ok {
@@ -218,7 +215,7 @@ func TestComposeBatchPass(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.GetData(&expected)
 
 	for _, key := range []string{"merge", "ack-one"} {
 		if _, ok := expected[key]; ok {
@@ -242,7 +239,7 @@ func TestComposeBatchWontFail(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.GetData(&expected)
 
 	if msg.GetCode() != 200 {
 		t.Error("Request should have passed")
@@ -262,6 +259,28 @@ func TestComposeBatchWontFail(t *testing.T) {
 		if _, ok := expected[key]; !ok {
 			t.Error("Must have", key, "in final output")
 		}
+	}
+}
+
+func TestBatch(t *testing.T) {
+	c := engine.NewBatch(
+		engine.NewRequestComposition(topicOne),
+		engine.NewRequestComposition(topicTwo),
+		engine.NewRequestComposition(topicThree),
+	)
+
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
+
+	if cap(f) != 1 {
+		t.Error("Must only capture 1 output.")
+	}
+
+	m := <-f
+	expected := StrMap{}
+	if err := m.GetData(&expected); err != nil {
+		t.Error("Must be valid message output")
+	} else if _, ok := expected["input"]; !ok {
+		t.Error("Must have input in final output")
 	}
 }
 
@@ -286,10 +305,9 @@ func TestBatchRecordOutput(t *testing.T) {
 
 	for _, m := range out {
 		expected := StrMap{}
-		if err := m.Unmarshal(&expected); err != nil {
+		if err := m.GetData(&expected); err != nil {
 			t.Error("Must be valid message output")
 		} else if _, ok := expected["input"]; !ok {
-			log.Println(m.data)
 			t.Error("Must have input in final output")
 		}
 	}
@@ -329,7 +347,7 @@ func TestOrOr(t *testing.T) {
 
 	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
 	expected := StrMap{}
-	msg.Unmarshal(&expected)
+	msg.GetData(&expected)
 
 	for _, key := range []string{"ack-three"} {
 		if _, ok := expected[key]; ok {
@@ -347,9 +365,9 @@ func TestOrOr(t *testing.T) {
 
 func TestParallel(t *testing.T) {
 	c := engine.NewParallel(
-		engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
-		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
-		engine.NewRequestComposition(topicThree).With(StrMap{"merge-three": 1}),
+		engine.NewRequestComposition(topicOne),
+		engine.NewRequestComposition(topicTwo),
+		engine.NewRequestComposition(topicThree),
 	)
 
 	f := c.Execute(makeMessage(StrMap{"input": 1}))
@@ -362,27 +380,141 @@ func TestParallel(t *testing.T) {
 		t.Error("Must have captured 3 outputs.")
 	}
 
-	first := StrMap{}
-	out[0].Unmarshal(&first)
-	for _, key := range []string{"input", "ack-one", "merge-one"} {
-		if _, ok := first[key]; !ok {
-			t.Error("Must have", key, "in final output")
+	for _, msg := range out {
+		data := StrMap{}
+		msg.GetData(&data)
+		for _, key := range []string{"input"} {
+			if _, ok := data[key]; !ok {
+				t.Error("Must have", key, "in final output")
+			}
 		}
 	}
+}
 
-	second := StrMap{}
-	out[1].Unmarshal(&second)
-	for _, key := range []string{"input", "ack-two", "merge-two"} {
-		if _, ok := second[key]; !ok {
-			t.Error("Must have", key, "in final output")
-		}
+func TestOrOrParallel(t *testing.T) {
+	c := engine.NewOrOr(
+		engine.NewRequestComposition(topicBadTwo),
+		engine.NewParallel(
+			engine.NewRequestComposition(topicOne),
+			engine.NewRequestComposition(topicTwo),
+			engine.NewRequestComposition(topicThree),
+		),
+		engine.NewRequestComposition(topicOne),
+	)
+
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
+	if cap(f) != 1 {
+		t.Error("Must only capture 1 output.")
 	}
 
-	third := StrMap{}
-	out[2].Unmarshal(&third)
-	for _, key := range []string{"input", "ack-three", "merge-three"} {
-		if _, ok := third[key]; !ok {
-			t.Error("Must have", key, "in final output")
+	out := []*Message{}
+	(<-f).GetData(&out)
+
+	if len(out) != 3 {
+		t.Error("Parallel should have captured 3 outputs.")
+	}
+
+	expected := StrMap{}
+	out[0].GetData(&expected)
+
+	if _, ok := expected["input"]; !ok {
+		t.Error("Must have key: input in final output")
+	}
+}
+
+func TestParallelParallel(t *testing.T) {
+	c := engine.NewParallel(
+		engine.NewParallel(
+			engine.NewRequestComposition(topicOne).With(StrMap{"1a": 1}),
+			engine.NewRequestComposition(topicTwo).With(StrMap{"2a": 1}),
+			engine.NewRequestComposition(topicThree).With(StrMap{"3a": 1}),
+		),
+		engine.NewParallel(
+			engine.NewRequestComposition(topicOne).With(StrMap{"1b": 1}),
+			engine.NewRequestComposition(topicTwo).With(StrMap{"2b": 1}),
+			engine.NewRequestComposition(topicThree).With(StrMap{"3b": 1}),
+		),
+	)
+
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
+	if cap(f) != 2 {
+		t.Error("Must capture 2 outputs.")
+	}
+
+	for msg := range f {
+		out := []*Message{}
+		msg.GetData(&out)
+
+		if len(out) != 3 {
+			t.Error("Must have captured 3 outputs.")
 		}
+
+		for _, x := range out {
+			data := StrMap{}
+			x.GetData(&data)
+			if _, ok := data["input"]; !ok {
+				t.Error("Must have key: input in final output")
+			}
+		}
+	}
+}
+
+func TestAndAndParallel(t *testing.T) {
+	c := engine.NewAndAnd(
+		engine.NewRequestComposition(topicOne),
+		engine.NewParallel(
+			engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
+			engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+			engine.NewRequestComposition(topicThree).With(StrMap{"merge-three": 1}),
+		),
+	)
+
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
+	if cap(f) != 1 {
+		t.Error("Must capture only 1 output.")
+	}
+
+	out := []*Message{}
+	(<-f).GetData(&out)
+
+	if len(out) != 3 {
+		t.Error("Must have captured 3 outputs.")
+	}
+
+	expected := StrMap{}
+	out[0].GetData(&expected)
+
+	if _, ok := expected["input"]; !ok {
+		t.Error("Must have key: input in final output")
+	}
+}
+
+func TestPipeParallel(t *testing.T) {
+	c := engine.NewPipe(
+		engine.NewRequestComposition(topicOne),
+		engine.NewParallel(
+			engine.NewRequestComposition(topicOne),
+			engine.NewRequestComposition(topicTwo),
+			engine.NewRequestComposition(topicThree),
+		),
+	)
+
+	f := c.Execute(makeMessage(StrMap{"input": 1}))
+	if cap(f) != 1 {
+		t.Error("Must capture only 1 output.")
+	}
+
+	out := []*Message{}
+	(<-f).GetData(&out)
+
+	if len(out) != 3 {
+		t.Error("Must have captured 3 outputs.")
+	}
+
+	expected := StrMap{}
+	out[0].GetData(&expected)
+
+	if _, ok := expected["ack-one"]; !ok {
+		t.Error("Must have key: ack-one in final output")
 	}
 }

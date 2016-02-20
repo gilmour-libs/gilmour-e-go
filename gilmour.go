@@ -8,13 +8,19 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/protocol"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
+func responseTopic(sender string) string {
+	return fmt.Sprintf("gilmour.response.%s", sender)
+}
+
+//Get a working Gilmour Engine powered by the backend provided.
+//Currently, only Redis is supported as a backend.
 func Get(backend Backend) *Gilmour {
 	x := Gilmour{}
-	x.subscriber = NewSubscriptionManager()
+	x.subscriber = newSubscriptionManager()
 	x.addBackend(backend)
 	return &x
 }
@@ -25,81 +31,89 @@ type Gilmour struct {
 	subscriberMutex   sync.RWMutex
 	backend           Backend
 	ident             string
-	errorMethod       string
-	subscriber        Subscriber
+	errorPolicy       string
+	subscriber        subscriber
 }
 
-func (self *Gilmour) Start() {
+// Start the Gilmour engine. Creates a bi-directional channel; sent to both
+// backend and startReciver
+func (g *Gilmour) Start() {
 	sink := make(chan *protocol.Message)
-	self.backend.Start(sink)
-	go self.keepListening(sink)
+	g.backend.Start(sink)
+	go g.startReciver(sink)
 }
 
-func (self *Gilmour) Stop() {
-	defer self.unregisterIdent()
-	defer self.backend.Stop()
+//Exit routine. UnSubscribes Slots, removes registered health ident and
+//triggers backend Stop.
+func (g *Gilmour) Stop() {
+	defer g.unregisterIdent()
+	defer g.backend.Stop()
 
-	for topic, handlers := range self.getAllSubscribers() {
+	for topic, handlers := range g.getAllSubscribers() {
 		for _, h := range handlers {
-			self.UnsubscribeSlot(topic, h)
-			self.UnsubscribeReply(topic, h)
+			g.UnsubscribeSlot(topic, h)
+			g.UnsubscribeReply(topic, h)
 		}
 	}
 }
 
-func (self *Gilmour) keepListening(sink <-chan *protocol.Message) {
+//Keep listening to messages on sink, spinning a new goroutine for every
+//message recieved.
+func (g *Gilmour) startReciver(sink <-chan *protocol.Message) {
 	for {
 		msg := <-sink
-		go self.processMessage(msg)
+		go g.processMessage(msg)
 	}
 }
 
-func (self *Gilmour) processMessage(msg *protocol.Message) {
-	subs, ok := self.getSubscribers(msg.Key)
+/*
+Parse a gilmour Message and for subscribers of this topic do the following:
+	* If subscriber is one shot, unsubscribe the subscriber to prevent subscribers from re-execution.
+	* If subscriber belongs to a group, try acquiring a lock via backend to ensure group exclusivity.
+	* If all conditions suffice spin up a new goroutine for each subscription.
+*/
+func (g *Gilmour) processMessage(msg *protocol.Message) {
+	subs, ok := g.getSubscribers(msg.Key)
 	if !ok || len(subs) == 0 {
 		ui.Warn("Message cannot be processed. No subs found for key %v", msg.Key)
 		return
 	}
 
-	for _, s := range subs {
-
-		if s.GetOpts() != nil && s.GetOpts().IsOneShot() {
-			ui.Message("Unsubscribing one shot response topic %v", msg.Topic)
-			go self.UnsubscribeReply(msg.Key, s)
-		}
-
-		self.executeSubscriber(s, msg.Topic, msg.Data)
-	}
-}
-
-func (self *Gilmour) executeSubscriber(s *Subscription, topic string, data interface{}) {
-	m, err := ParseMessage(data)
+	m, err := parseMessage(msg.Data)
 	if err != nil {
 		ui.Alert(err.Error())
 		return
 	}
 
-	opts := s.GetOpts()
-	if opts.GetGroup() != protocol.BLANK {
-		if !self.backend.AcquireGroupLock(opts.GetGroup(), m.GetSender()) {
-			ui.Warn(
-				"Unable to acquire Lock. Topic %v Group %v Sender %v",
-				topic, opts.GetGroup(), m.GetSender(),
-			)
-			return
-		}
-	}
+	for _, s := range subs {
 
-	go self.handleRequest(s, topic, m)
+		opts := s.GetOpts()
+		if opts != nil && opts.isOneShot() {
+			ui.Message("Unsubscribing one shot response topic %v", msg.Topic)
+			go g.UnsubscribeReply(msg.Key, s)
+		}
+
+		if opts.GetGroup() != "" && opts.shouldSendResponse() {
+			if !g.backend.AcquireGroupLock(opts.GetGroup(), m.GetSender()) {
+				ui.Warn(
+					"Unable to acquire Lock. Topic %v Group %v Sender %v",
+					msg.Topic, opts.GetGroup(), m.GetSender(),
+				)
+				continue
+			}
+		}
+
+		go g.handleRequest(s, msg.Topic, m)
+	}
 }
 
-func (self *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
+func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 	senderId := m.GetSender()
 
 	req := NewRequest(topic, m)
 
 	res := &Message{}
-	res.SetSender(self.backend.ResponseTopic(senderId))
+	res.setSender(responseTopic(senderId))
 
 	done := make(chan bool, 1)
 
@@ -140,15 +154,15 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 
 	status := <-done
 
-	if !s.GetOpts().IsSlot() {
+	if s.GetOpts().shouldSendResponse() {
 		if status == false {
-			self.sendTimeout(senderId, res.GetSender())
+			g.sendTimeout(senderId, res.GetSender())
 		} else {
 			if res.GetCode() == 0 {
 				res.SetCode(200)
 			}
 
-			if err := self.publish(res.GetSender(), res); err != nil {
+			if err := g.publish(res.GetSender(), res); err != nil {
 				ui.Alert(err.Error())
 			}
 		}
@@ -157,92 +171,88 @@ func (self *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 		// Inform the error catcher, If there is no handler for this Request
 		// but the request had failed. This is automatically handled in case
 		// of a response being written via Publisher.
-		request := string(req.StringData())
-		errMsg := protocol.MakeError(499, topic, request, "", req.Sender(), "")
-		self.ReportError(errMsg)
+		request := string(req.bytes())
+		errMsg := makeError(499, topic, request, "", req.Sender(), "")
+		g.reportError(errMsg)
 	}
 }
 
-func (self *Gilmour) sendTimeout(senderId, channel string) {
+func (g *Gilmour) sendTimeout(senderId, channel string) {
 	msg := &Message{}
-	msg.SetSender(senderId).SetCode(499).SetData("Execution timed out")
-	if err := self.publish(channel, msg); err != nil {
+	msg.setSender(senderId).SetCode(499).SetData("Execution timed out")
+	if err := g.publish(channel, msg); err != nil {
 		ui.Alert(err.Error())
 	}
 }
 
-func (self *Gilmour) addBackend(backend Backend) {
-	self.backend = backend
+func (g *Gilmour) addBackend(backend Backend) {
+	g.backend = backend
 }
 
-func (self *Gilmour) GetIdent() string {
-	self.identMutex.Lock()
-	defer self.identMutex.Unlock()
+func (g *Gilmour) getIdent() string {
+	g.identMutex.Lock()
+	defer g.identMutex.Unlock()
 
-	if self.ident == protocol.BLANK {
-		self.ident = protocol.MakeIdent()
+	if g.ident == "" {
+		g.ident = makeIdent()
 	}
 
-	return self.ident
+	return g.ident
 }
 
-func (self *Gilmour) registerIdent() {
-	ident := self.GetIdent()
-	err := self.backend.RegisterIdent(ident)
+func (g *Gilmour) registerIdent() {
+	ident := g.getIdent()
+	err := g.backend.RegisterIdent(ident)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (self *Gilmour) unregisterIdent() {
-	if !self.IsHealthCheckEnabled() {
+func (g *Gilmour) unregisterIdent() {
+	if !g.IsHealthCheckEnabled() {
 		return
 	}
 
-	ident := self.GetIdent()
-	err := self.backend.UnregisterIdent(ident)
+	ident := g.getIdent()
+	err := g.backend.UnregisterIdent(ident)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (self *Gilmour) IsHealthCheckEnabled() bool {
-	return self.enableHealthCheck
+func (g *Gilmour) IsHealthCheckEnabled() bool {
+	return g.enableHealthCheck
 }
 
-func (self *Gilmour) SetHealthCheckEnabled() *Gilmour {
-	self.enableHealthCheck = true
-	subscribeHealth(self)
-	self.registerIdent()
-	return self
+func (g *Gilmour) SetHealthCheckEnabled() *Gilmour {
+	g.enableHealthCheck = true
+	subscribeHealth(g)
+	g.registerIdent()
+	return g
 }
 
-func (self *Gilmour) getAllSubscribers() map[string][]*Subscription {
-	return self.subscriber.GetAll()
+func (g *Gilmour) getAllSubscribers() map[string][]*Subscription {
+	return g.subscriber.getAll()
 }
 
-func (self *Gilmour) getSubscribers(topic string) ([]*Subscription, bool) {
-	return self.subscriber.Get(topic)
+func (g *Gilmour) getSubscribers(topic string) ([]*Subscription, bool) {
+	return g.subscriber.get(topic)
 }
 
-func (self *Gilmour) removeSubscribers(topic string) {
-	self.subscriber.DeleteAll(topic)
+func (g *Gilmour) removeSubscribers(topic string) {
+	g.subscriber.deleteAll(topic)
 }
 
-func (self *Gilmour) removeSubscriber(topic string, s *Subscription) {
-	self.subscriber.Delete(topic, s)
+func (g *Gilmour) removeSubscriber(topic string, s *Subscription) {
+	g.subscriber.delete(topic, s)
 }
 
-func (self *Gilmour) addSubscriber(t string, h Handler, o *HandlerOpts) *Subscription {
-	return self.subscriber.Add(t, h, o)
+func (g *Gilmour) addSubscriber(t string, h Handler, o *HandlerOpts) *Subscription {
+	return g.subscriber.add(t, h, o)
 }
 
-func isDuplicateExclusive(topic, group string) bool {
-	return false
-}
-
-func (self *Gilmour) isExclusiveDuplicate(topic, group string) bool {
-	subs, ok := self.getSubscribers(topic)
+func (g *Gilmour) isExclusiveDuplicate(topic, group string) bool {
+	subs, ok := g.getSubscribers(topic)
 	if ok {
 		for _, s := range subs {
 			if s.GetOpts().GetGroup() == group {
@@ -254,7 +264,92 @@ func (self *Gilmour) isExclusiveDuplicate(topic, group string) bool {
 	return false
 }
 
-func (self *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+//Underlying subscribe method.
+func (g *Gilmour) subscribe(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+	group := opts.GetGroup()
+
+	if group != "" && g.isExclusiveDuplicate(topic, group) {
+		return nil, errors.New(fmt.Sprintf("Duplicate reply handler for %v:%v", topic, group))
+	}
+
+	if err := g.backend.Subscribe(topic, opts.GetGroup()); err != nil {
+		return nil, err
+	} else {
+		return g.addSubscriber(topic, h, opts), nil
+	}
+}
+
+//Underlying unsubscribe.
+func (g *Gilmour) unsubscribe(topic string, s *Subscription) {
+	g.removeSubscriber(topic, s)
+
+	if _, ok := g.getSubscribers(topic); !ok {
+		err := g.backend.Unsubscribe(topic)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+/*
+Gilmour allows you to do more with service error messages by using one of the
+following policies:
+
+	1) Publish.
+	2) Queue.
+	3) Ignore.
+
+Error messages are forwarded to the configured backend alongwith policy.
+*/
+func (g *Gilmour) SetErrorPolicy(policy string) {
+	if policy != protocol.ErrorPolicyQueue &&
+		policy != protocol.ErrorPolicyPublish &&
+		policy != protocol.ErrorPolicyIgnore {
+		panic(errors.New(fmt.Sprintf(
+			"error policy can only be %v, %v or %v",
+			protocol.ErrorPolicyQueue, protocol.ErrorPolicyPublish,
+			protocol.ErrorPolicyIgnore,
+		)))
+	}
+
+	g.errorPolicy = policy
+}
+
+//Error policy for this Gilmour engine.
+func (g *Gilmour) GetErrorPolicy() string {
+	return g.errorPolicy
+}
+
+func (g *Gilmour) reportError(e *gilmourError) {
+	ui.Warn(
+		"Reporting Error. Code %v Sender %v Topic %v",
+		e.getCode(), e.getSender(), e.getTopic(),
+	)
+
+	err := g.backend.ReportError(g.GetErrorPolicy(), e)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (g *Gilmour) requestDestination(topic string) string {
+	if strings.HasPrefix(topic, "gilmour.") {
+		return topic
+	} else {
+		return fmt.Sprintf("gilmour.request.%v", topic)
+	}
+}
+
+func (g *Gilmour) slotDestination(topic string) string {
+	if strings.HasPrefix(topic, "gilmour.") {
+		return topic
+	} else {
+		return fmt.Sprintf("gilmour.slot.%v", topic)
+	}
+}
+
+// Reply part of Request-Reply design pattern.
+func (g *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
 	if strings.Contains(topic, "*") {
 		return nil, errors.New("ReplyTo cannot have wildcard topics")
 	}
@@ -267,140 +362,57 @@ func (self *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subsc
 		opts.SetGroup("_default")
 	}
 
-	return self.subscribe(self.requestDestination(topic), h, opts)
+	return g.subscribe(g.requestDestination(topic), h, opts)
 }
 
-func (self *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
-	if opts == nil {
-		opts = &HandlerOpts{}
-	}
-
-	opts.SetSlot()
-	return self.subscribe(self.slotDestination(topic), h, opts)
+//Unsubscribe Previously registered Reply to.
+func (g *Gilmour) UnsubscribeReply(topic string, s *Subscription) {
+	g.unsubscribe(g.requestDestination(topic), s)
 }
 
-func (self *Gilmour) subscribe(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
-	group := opts.GetGroup()
-
-	if group != "" && self.isExclusiveDuplicate(topic, group) {
-		return nil, errors.New(fmt.Sprintf("Duplicate reply handler for %v:%v", topic, group))
-	}
-
-	if err := self.backend.Subscribe(topic, opts.GetGroup()); err != nil {
-		return nil, err
-	} else {
-		return self.addSubscriber(topic, h, opts), nil
-	}
-}
-
-func (self *Gilmour) UnsubscribeSlot(topic string, s *Subscription) {
-	self.unsubscribe(self.slotDestination(topic), s)
-}
-
-func (self *Gilmour) UnsubscribeReply(topic string, s *Subscription) {
-	self.unsubscribe(self.requestDestination(topic), s)
-}
-
-func (self *Gilmour) unsubscribe(topic string, s *Subscription) {
-	self.removeSubscriber(topic, s)
-
-	if _, ok := self.getSubscribers(topic); !ok {
-		err := self.backend.Unsubscribe(topic)
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
-func (self *Gilmour) CanReportErrors() bool {
-	return self.errorMethod != protocol.BLANK
-}
-
-func (self *Gilmour) SetErrorMethod(method string) {
-	if method != protocol.QUEUE && method != protocol.PUBLISH && method != protocol.BLANK {
-		panic(errors.New(fmt.Sprintf(
-			"error method can only be %v, %v or %v",
-			protocol.QUEUE, protocol.PUBLISH, protocol.BLANK,
-		)))
-	}
-
-	self.errorMethod = method
-}
-
-func (self *Gilmour) GetErrorMethod() string {
-	return self.errorMethod
-}
-
-func (self *Gilmour) ReportError(e *protocol.Error) {
-	ui.Warn(
-		"Reporting Error. Code %v Sender %v Topic %v",
-		e.GetCode(), e.GetSender(), e.GetTopic(),
-	)
-
-	err := self.backend.ReportError(self.GetErrorMethod(), e)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (self *Gilmour) requestDestination(topic string) string {
-	if strings.HasPrefix(topic, "gilmour.") {
-		return topic
-	} else {
-		return fmt.Sprintf("gilmour.request.%v", topic)
-	}
-}
-
-func (self *Gilmour) slotDestination(topic string) string {
-	if strings.HasPrefix(topic, "gilmour.") {
-		return topic
-	} else {
-		return fmt.Sprintf("gilmour.slot.%v", topic)
-	}
-}
-
-func (self *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (sender string, err error) {
+// Request part of Request-Reply design pattern.
+func (g *Gilmour) Request(topic string, msg *Message, handler Handler, opts *RequestOpts) (sender string, err error) {
 	if msg == nil {
 		msg = NewMessage()
 	}
 
-	sender = protocol.MakeSenderId()
-	msg.SetSender(sender)
+	sender = makeSenderId()
+	msg.setSender(sender)
 
 	if opts == nil {
 		opts = NewRequestOpts()
 	}
 
-	//If a handler is being supplied, subscribe to a response.
-	if opts.GetHandler() == nil {
+	if handler == nil {
 		return sender, errors.New("Cannot use Request without a handler")
 	}
 
-	if has, err := self.backend.HasActiveSubscribers(self.requestDestination(topic)); err != nil {
+	if has, err := g.backend.HasActiveSubscribers(g.requestDestination(topic)); err != nil {
 		return sender, err
 	} else if !has {
 		return sender, errors.New("No active listeners for: " + topic)
 	}
 
-	respChannel := self.backend.ResponseTopic(sender)
+	respChannel := responseTopic(sender)
 
 	//Wait for a responseHandler
-	rOpts := NewHandlerOpts().SetOneShot().SetGroup("response")
-	self.ReplyTo(respChannel, opts.GetHandler(), rOpts)
+	rOpts := NewHandlerOpts().setOneShot().sendResponse(false)
+	g.ReplyTo(respChannel, handler, rOpts)
 
 	timeout := opts.GetTimeout()
 	if timeout > 0 {
 		time.AfterFunc(time.Duration(timeout)*time.Second, func() {
-			self.sendTimeout(sender, respChannel)
+			g.sendTimeout(sender, respChannel)
 		})
 	}
 
-	return sender, self.publish(self.requestDestination(topic), msg)
+	return sender, g.publish(g.requestDestination(topic), msg)
 }
 
 // Same as Request but emulates synchronous behavior. Will not return until you
 // have error or data.
-func (self *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*Request, error) {
+func (g *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*Request, error) {
+
 	var req *Request
 
 	var wg sync.WaitGroup
@@ -410,12 +422,12 @@ func (self *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) 
 		opts = NewRequestOpts()
 	}
 
-	opts.SetHandler(func(r *Request, _ *Message) {
+	handler := func(r *Request, resp *Message) {
 		defer wg.Done()
 		req = r
-	})
+	}
 
-	_, err := self.Request(topic, msg, opts)
+	_, err := g.Request(topic, msg, handler, opts)
 	if err != nil {
 		wg.Done()
 	}
@@ -424,18 +436,33 @@ func (self *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) 
 	return req, err
 }
 
-func (self *Gilmour) Signal(topic string, msg *Message) (sender string, err error) {
+//Slot counterpart of Signal Slot architecture.
+func (g *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+	if opts == nil {
+		opts = &HandlerOpts{}
+	}
+
+	opts.setSlot()
+	return g.subscribe(g.slotDestination(topic), h, opts)
+}
+
+func (g *Gilmour) UnsubscribeSlot(topic string, s *Subscription) {
+	g.unsubscribe(g.slotDestination(topic), s)
+}
+
+// Signal counterpart of Signl-Slot design pattern.
+func (g *Gilmour) Signal(topic string, msg *Message) (sender string, err error) {
 	if msg == nil {
 		msg = NewMessage()
 	}
 
-	sender = protocol.MakeSenderId()
-	msg.SetSender(sender)
-	return sender, self.publish(self.slotDestination(topic), msg)
+	sender = makeSenderId()
+	msg.setSender(sender)
+	return sender, g.publish(g.slotDestination(topic), msg)
 }
 
 // Internal method to publish a message.
-func (self *Gilmour) publish(topic string, msg *Message) error {
+func (g *Gilmour) publish(topic string, msg *Message) error {
 	if msg.GetCode() == 0 {
 		msg.SetCode(200)
 	}
@@ -447,19 +474,14 @@ func (self *Gilmour) publish(topic string, msg *Message) error {
 				request = []byte{}
 			}
 
-			self.ReportError(
-				protocol.MakeError(
-					msg.GetCode(),
-					topic,
-					string(request),
-					"",
-					msg.GetSender(),
-					"",
+			g.reportError(
+				makeError(
+					msg.GetCode(), topic, string(request), "", msg.GetSender(), "",
 				),
 			)
 
 		}()
 	}
 
-	return self.backend.Publish(topic, msg)
+	return g.backend.Publish(topic, msg)
 }

@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	redigo "github.com/garyburd/redigo/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
 const (
@@ -51,29 +50,13 @@ func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
 		topic = engine.requestDestination(topic)
 	}
 
-	conn := redis.GetConn()
-	defer conn.Close()
-
-	idents, err2 := redigo.Strings(conn.Do("PUBSUB", "CHANNELS"))
-	if err2 != nil {
-		log.Println(err2.Error())
-		return false, err2
-	}
-
-	for _, t := range idents {
-		log.Println(t)
-		if t == topic {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return redis.IsTopicSubscribed(topic)
 }
 
 func TestHealthSubscribe(t *testing.T) {
 	engine.SetHealthCheckEnabled()
 
-	topic := redis.HealthTopic(engine.GetIdent())
+	topic := healthTopic(engine.getIdent())
 	if has, _ := isReplySubscribed(topic); !has {
 		t.Error(topic, "should have been subscribed")
 	}
@@ -81,13 +64,13 @@ func TestHealthSubscribe(t *testing.T) {
 
 func TestSubscribePing(t *testing.T) {
 	timeout := 3
-	handler_opts := MakeHandlerOpts().SetTimeout(timeout)
+	handler_opts := NewHandlerOpts().SetTimeout(timeout)
 	sub, err := engine.ReplyTo(PingTopic, func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		ui.Message("Topic %v Received %v", PingTopic, x)
 		ui.Message("Topic %v Sending %v", PingTopic, PingResponse)
-		resp.Send(PingResponse)
+		resp.SetData(PingResponse)
 	}, handler_opts)
 
 	if err != nil {
@@ -110,7 +93,7 @@ func TestSubscribePingResponse(t *testing.T) {
 	done := make(chan bool, 1)
 
 	data := NewMessage().SetData("ping?")
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		var recv string
 		req.Data(&recv)
 
@@ -119,9 +102,9 @@ func TestSubscribePingResponse(t *testing.T) {
 		}
 
 		done <- true
-	})
+	}
 
-	_, err := engine.Request(PingTopic, data, opts)
+	_, err := engine.Request(PingTopic, data, handler, nil)
 	if err != nil {
 		t.Error("Error in response", err.Error())
 		return
@@ -147,7 +130,7 @@ func TestSubscribePingSync(t *testing.T) {
 }
 
 func TestWildcardSlot(t *testing.T) {
-	opts := MakeHandlerOpts().SetGroup("wildcard_group")
+	opts := NewHandlerOpts().SetGroup("wildcard_group")
 	topic := fmt.Sprintf("%v*", PingTopic)
 	_, err := engine.Slot(topic, func(req *Request, resp *Message) {}, opts)
 	if err != nil {
@@ -170,7 +153,7 @@ func TestPublisherSleep(t *testing.T) {
 			var delay int
 			req.Data(&delay)
 			time.Sleep(time.Duration(delay) * time.Second)
-			resp.Send(PingResponse)
+			resp.SetData(PingResponse)
 		}, nil,
 	)
 
@@ -185,15 +168,12 @@ func TestPublisherSleep(t *testing.T) {
 }
 
 func TestHealthGetAll(t *testing.T) {
-	conn := redis.GetConn()
-	defer conn.Close()
-
-	idents, err := redigo.StringMap(conn.Do("HGETALL", redis.GetHealthIdent()))
+	idents, err := redis.ActiveIdents()
 	if err != nil {
 		t.Error(err)
 	}
 
-	val, ok := idents[engine.GetIdent()]
+	val, ok := idents[engine.getIdent()]
 	if !ok || val != "true" {
 		t.Error("Ident is missing in the Health ident")
 	}
@@ -223,7 +203,7 @@ func TestRelayFromSubscriber(t *testing.T) {
 
 func TestTwiceSlot(t *testing.T) {
 	topic := randSeq(10)
-	opts := MakeHandlerOpts()
+	opts := NewHandlerOpts()
 
 	subs := []*Subscription{}
 	defer func() {
@@ -245,7 +225,7 @@ func TestTwiceSlot(t *testing.T) {
 func TestTwiceSlotFail(t *testing.T) {
 	topic := randSeq(10)
 	count := 2
-	opts := MakeHandlerOpts().SetGroup("unique")
+	opts := NewHandlerOpts().SetGroup("unique")
 
 	subs := []*Subscription{}
 	defer func() {
@@ -271,7 +251,7 @@ func TestTwiceSlotFail(t *testing.T) {
 func TestTwiceReplyToFail(t *testing.T) {
 	topic := randSeq(10)
 	count := 2
-	opts := MakeHandlerOpts() //Note, we did not pass a group.
+	opts := NewHandlerOpts() //Note, we did not pass a group.
 
 	subs := []*Subscription{}
 	defer func() {
@@ -305,7 +285,7 @@ type failedSlotStruct struct {
 func TestSignalSlotStruct(t *testing.T) {
 	topic := randSeq(10)
 	out_chan := make(chan *slotStruct, 1)
-	opts := MakeHandlerOpts()
+	opts := NewHandlerOpts()
 
 	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
 		var x slotStruct
@@ -340,7 +320,7 @@ func TestSignalSlotStruct(t *testing.T) {
 func TestSignalSlotStructFailed(t *testing.T) {
 	topic := randSeq(10)
 	out_chan := make(chan *failedSlotStruct, 1)
-	opts := MakeHandlerOpts()
+	opts := NewHandlerOpts()
 
 	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
 		var x failedSlotStruct
@@ -396,7 +376,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 	// Subscribe x no. of times
 	for i := 0; i < count; i++ {
 		data := fmt.Sprintf("hello %v", i)
-		opts := MakeHandlerOpts().SetGroup(randSeq(10))
+		opts := NewHandlerOpts().SetGroup(randSeq(10))
 
 		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {
 			out_chan <- data
@@ -434,7 +414,7 @@ func TestHealthResponse(t *testing.T) {
 
 	data := NewMessage().SetData("is-healthy?")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		x := []string{}
 		req.Data(&x)
 
@@ -443,9 +423,9 @@ func TestHealthResponse(t *testing.T) {
 		} else {
 			out_chan <- "false"
 		}
-	})
+	}
 
-	_, err := engine.Request(redis.HealthTopic(engine.GetIdent()), data, opts)
+	_, err := engine.Request(healthTopic(engine.getIdent()), data, handler, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -498,13 +478,13 @@ func TestSendAndReceive(t *testing.T) {
 
 	data := NewMessage().SetData("ping?")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
-	})
+	}
 
-	_, err := engine.Request(PingTopic, data, opts)
+	_, err := engine.Request(PingTopic, data, handler, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -525,13 +505,14 @@ func TestPublisherTimeout(t *testing.T) {
 	sleepFor := 5
 
 	data := NewMessage().SetData(sleepFor)
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	opts := NewRequestOpts().SetTimeout(2)
+	handler := func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
-	}).SetTimeout(2)
+	}
 
-	_, err := engine.Request(SleepTopic, data, opts)
+	_, err := engine.Request(SleepTopic, data, handler, opts)
 	if err != nil {
 		t.Error(err)
 	}
@@ -554,16 +535,15 @@ func TestSansListenerSlot(t *testing.T) {
 }
 
 func TestSansHandlerRequest(t *testing.T) {
-	_, err := engine.Request("humpty-dumpty", nil, nil)
+	_, err := engine.Request("humpty-dumpty", nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "without a handler") {
 		t.Error(err.Error())
 	}
 }
 
 func TestSansListenerRequest(t *testing.T) {
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {})
-
-	_, err := engine.Request("humpty-dumpty", nil, opts)
+	handler := func(req *Request, resp *Message) {}
+	_, err := engine.Request("humpty-dumpty", nil, handler, nil)
 	if err == nil || !strings.Contains(err.Error(), "listeners") {
 		t.Error(err.Error())
 	}
@@ -577,9 +557,9 @@ func TestSubscriberTimeout(t *testing.T) {
 		topic,
 		func(req *Request, resp *Message) {
 			time.Sleep(time.Second * 4)
-			resp.Send(PingResponse)
+			resp.SetData(PingResponse)
 		},
-		MakeHandlerOpts().SetTimeout(2),
+		NewHandlerOpts().SetTimeout(2),
 	)
 
 	if err != nil {
@@ -589,13 +569,13 @@ func TestSubscriberTimeout(t *testing.T) {
 
 	data := NewMessage().SetData("send")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		var x string
 		req.Data(&x)
 		out_chan <- x
-	})
+	}
 
-	engine.Request(topic, data, opts)
+	engine.Request(topic, data, handler, nil)
 
 	select {
 	case result := <-out_chan:
@@ -626,11 +606,11 @@ func TestHandlerException(t *testing.T) {
 
 	data := NewMessage().SetData("send")
 
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {
+	handler := func(req *Request, resp *Message) {
 		out_chan <- req.Code()
-	})
+	}
 
-	engine.Request(topic, data, opts)
+	engine.Request(topic, data, handler, nil)
 
 	select {
 	case result := <-out_chan:
@@ -653,9 +633,9 @@ func TestSansListener(t *testing.T) {
 
 func TestConfirmSansListener(t *testing.T) {
 	data := NewMessage().SetData("ping?")
-	opts := NewRequestOpts().SetHandler(func(req *Request, resp *Message) {})
+	handler := func(req *Request, resp *Message) {}
 
-	if _, err := engine.Request("ping-confirm-sans-listener", data, opts); err != nil {
+	if _, err := engine.Request("ping-confirm-sans-listener", data, handler, nil); err != nil {
 		if !strings.Contains(err.Error(), "active listeners") {
 			t.Error(err.Error())
 		}

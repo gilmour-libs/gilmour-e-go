@@ -5,20 +5,29 @@ import (
 	"os/signal"
 	"syscall"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v3/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
 )
 
-func BindSignals(engine *Gilmour) {
+// Call to start listening on signals for graceful shutdown & cleanup. By
+// default Gilmour listens to SIGHUP, SIGINT, SIGTERM, SIGQUIT, however
+// you can override this by providing a list of desired signals instead.
+func (g *Gilmour) BindSignals(signals ...os.Signal) {
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc,
-		syscall.SIGHUP,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
+
+	if len(signals) == 0 {
+		signals = []os.Signal{
+			syscall.SIGHUP,
+			syscall.SIGINT,
+			syscall.SIGTERM,
+			syscall.SIGQUIT,
+		}
+	}
+
+	signal.Notify(sigc, signals...)
+
 	go func() {
 		<-sigc
-		engine.Stop()
 		ui.Warn("Shutting down engines.")
-		os.Exit(0)
+		g.Stop()
 	}()
 }

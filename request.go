@@ -5,28 +5,28 @@ type Request struct {
 	gData *Message
 }
 
-func (self *Request) Sender() string {
-	return self.gData.GetSender()
+func (r *Request) Sender() string {
+	return r.gData.GetSender()
 }
 
-func (self *Request) RawData() interface{} {
-	return self.gData.data
+func (r *Request) RawData() interface{} {
+	return r.gData.Data
 }
 
-func (self *Request) Data(t interface{}) {
-	self.gData.Unmarshal(t)
+func (r *Request) Data(t interface{}) error {
+	return r.gData.GetData(t)
 }
 
-func (self *Request) Topic() string {
-	return self.topic
+func (r *Request) Topic() string {
+	return r.topic
 }
 
-func (self *Request) Code() int {
-	return self.gData.GetCode()
+func (r *Request) Code() int {
+	return r.gData.GetCode()
 }
 
-func (self *Request) StringData() []byte {
-	byt, _ := self.gData.StringData()
+func (r *Request) bytes() []byte {
+	byt, _ := r.gData.bytes()
 	return byt
 }
 

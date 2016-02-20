@@ -41,7 +41,7 @@ var cached = struct {
 	pool *redis.Pool
 }{}
 
-func GetPool(redis_host, password string) *redis.Pool {
+func getPool(redis_host, password string) *redis.Pool {
 
 	cached.Lock()
 	if cached.pool == nil {

@@ -13,10 +13,27 @@ const (
 	oror     = "oror"
 )
 
-// Common Messenger interface that allows Func Transformer or another
-// composition.
+/*
+Microservices increase the granularity of our services oriented architectures.
+Borrowing from unix philosohy, they should do one thing and do it well.
+However, for this to be really useful, there should be a facility such as is
+provided by unix shells. Unix shells allow the composition of small commands
+using the following methods
+
+	- Composition: cmd1 | cmd2 | cmd2
+	- AndAnd: cmd1 && cmd2 && cmd3
+	- Batch: cmd1; cmd2; cmd3 > out or (cmd1; cmd2; cmd3) > out
+	- Parallel: This runs stages in parallel call the callback when all are done.
+	The data passed to the callback is an array of :code hashes in no particular
+	order. The code is the highest error code from the array.
+
+Also, you should be able to use these methods of composition in any combination
+and also in a nexted manner - (cmd1 | cmd2) && cmd3. Gilmour enables you to do
+just that.
+*/
 type Composer interface {
 	Execute(*Message) <-chan *Message
+	IsStreaming() bool
 }
 
 // Standalone Merge transformer.
@@ -24,8 +41,33 @@ type Composer interface {
 // seeding it to the next command. Requires to be seeded with an interface
 // which will be applied to the previous command's output Message only if the
 // type is convertible. In case of a failure it shall raise an Error.
-type FuncComposition struct {
+type FuncComposer struct {
 	seed interface{}
+}
+
+func performJob(cmd Composer, m *Message) *Message {
+	jobOutput := cmd.Execute(copyMessage(m))
+
+	var toSend *Message
+
+	if cmd.IsStreaming() {
+		// Keep receiving what the channel keeps giving.
+		buf := []*Message{}
+		code := 200
+		for msg := range jobOutput {
+			// Code must be set to the highest code in the Output.
+			if msg.GetCode() > code {
+				code = msg.GetCode()
+			}
+			buf = append(buf, msg)
+		}
+		toSend = NewMessage().SetCode(code).SetData(buf)
+	} else {
+		//Single Message is to be sent.
+		toSend = <-jobOutput
+	}
+
+	return toSend
 }
 
 func copyMessage(m *Message) *Message {
@@ -34,7 +76,7 @@ func copyMessage(m *Message) *Message {
 		panic(err)
 	}
 
-	msg, err := ParseMessage(byts)
+	msg, err := parseMessage(byts)
 	if err != nil {
 		panic(err)
 	}
@@ -46,12 +88,16 @@ func outChan() chan *Message {
 	return make(chan *Message, 1)
 }
 
-func (hc *FuncComposition) Execute(m *Message) <-chan *Message {
-	err := compositionMerge(&m.data, &hc.seed)
+func (hc *FuncComposer) IsStreaming() bool {
+	return false
+}
+
+func (hc *FuncComposer) Execute(m *Message) <-chan *Message {
+	err := compositionMerge(&m.Data, &hc.seed)
 	if err != nil {
 		m := NewMessage()
 		m.SetCode(500)
-		m.Send(err.Error())
+		m.SetData(err.Error())
 	}
 
 	if m.GetCode() == 0 {
@@ -60,6 +106,7 @@ func (hc *FuncComposition) Execute(m *Message) <-chan *Message {
 
 	finally := outChan()
 	finally <- m
+	close(finally)
 	return finally
 }
 
@@ -69,6 +116,10 @@ type RequestComposer struct {
 	topic   string
 	engine  *Gilmour
 	message interface{}
+}
+
+func (rc *RequestComposer) IsStreaming() bool {
+	return false
 }
 
 //Set the Gilmour Engine required for execution
@@ -87,21 +138,22 @@ func (rc *RequestComposer) With(t interface{}) *RequestComposer {
 
 func (rc *RequestComposer) Execute(m *Message) <-chan *Message {
 	if rc.message != nil {
-		if err := compositionMerge(&m.data, &rc.message); err != nil {
+		if err := compositionMerge(&m.Data, &rc.message); err != nil {
 			log.Println(err)
 		}
 	}
 
 	finally := outChan()
 
-	opts := NewRequestOpts().SetHandler(func(resp *Request, send *Message) {
+	handler := func(resp *Request, send *Message) {
 		if resp.gData.GetCode() == 0 {
 			resp.gData.SetCode(200)
 		}
 		finally <- resp.gData
-	})
+		close(finally)
+	}
 
-	rc.engine.Request(rc.topic, m, opts)
+	rc.engine.Request(rc.topic, m, handler, nil)
 	return finally
 }
 
@@ -113,6 +165,10 @@ type composition struct {
 	engine        *Gilmour
 	_compositions []Composer
 	output        []*Message
+}
+
+func (c *composition) IsStreaming() bool {
+	return false
 }
 
 //Set the Gilmour Engine required for execution
@@ -181,6 +237,10 @@ type recordableComposition struct {
 	record bool
 }
 
+func (c *recordableComposition) IsStreaming() bool {
+	return true
+}
+
 func (c *recordableComposition) isRecorded() bool {
 	return c.record
 }
@@ -195,7 +255,7 @@ func (c *recordableComposition) RecordOutput() {
 
 func (c *recordableComposition) makeMessage(data interface{}) *Message {
 	m := NewMessage()
-	m.Send(data)
+	m.SetData(data)
 	m.SetCode(200)
 	return m
 }
@@ -238,16 +298,15 @@ func (c *PipeComposer) Execute(m *Message) <-chan *Message {
 
 	do := func(do recfunc, m *Message, f chan<- *Message) {
 		cmd := c.lpop()
-		finally := cmd.Execute(m)
+		toSend := performJob(cmd, m)
 
-		go func() {
-			output := <-finally
-			if len(c.compositions()) == 0 || output.GetCode() >= 400 {
-				f <- output
-			} else {
-				do(do, output, f)
-			}
-		}()
+		if len(c.compositions()) > 0 && toSend.GetCode() < 400 {
+			do(do, toSend, f)
+			return
+		}
+
+		f <- toSend
+		close(f)
 	}
 
 	do(do, copyMessage(m), f)
@@ -262,19 +321,16 @@ func (c *AndAndComposer) Execute(m *Message) <-chan *Message {
 	f := outChan()
 
 	do := func(do recfunc, m *Message, f chan<- *Message) {
-		input := copyMessage(m)
 		cmd := c.lpop()
-		finally := cmd.Execute(input)
+		toSend := performJob(cmd, m)
 
-		go func() {
-			output := <-finally
+		if len(c.compositions()) > 0 && toSend.GetCode() < 400 {
+			do(do, m, f)
+			return
+		}
 
-			if len(c.compositions()) == 0 || output.GetCode() >= 400 {
-				f <- output
-			} else {
-				do(do, m, f)
-			}
-		}()
+		f <- toSend
+		close(f)
 	}
 
 	do(do, m, f)
@@ -289,18 +345,16 @@ func (c *OrOrComposer) Execute(m *Message) <-chan *Message {
 	f := outChan()
 
 	do := func(do recfunc, m *Message, f chan<- *Message) {
-		input := copyMessage(m)
 		cmd := c.lpop()
-		finally := cmd.Execute(input)
+		toSend := performJob(cmd, m)
 
-		go func() {
-			output := <-finally
-			if output.GetCode() < 400 || len(c.compositions()) == 0 {
-				f <- output
-			} else {
-				do(do, m, f)
-			}
-		}()
+		if len(c.compositions()) > 0 && toSend.GetCode() >= 400 {
+			do(do, m, f)
+			return
+		}
+
+		f <- toSend
+		close(f)
 	}
 
 	do(do, m, f)
@@ -315,27 +369,18 @@ func (c *BatchComposer) Execute(m *Message) <-chan *Message {
 	f, wg := c.makeChan()
 
 	do := func(do recfunc, m *Message, f chan<- *Message) {
-		input := copyMessage(m)
+		defer wg.Done()
 		cmd := c.lpop()
-		finally := cmd.Execute(input)
+		terminal := len(c.compositions()) == 0
 
-		go func() {
-			defer wg.Done()
-			output := <-finally
+		toSend := performJob(cmd, m)
+		if terminal || c.isRecorded() {
+			f <- toSend
+		}
 
-			if c.isRecorded() {
-				f <- output
-			}
-
-			if len(c.compositions()) == 0 {
-				if !c.isRecorded() {
-					f <- output
-				}
-			} else {
-				do(do, m, f)
-			}
-
-		}()
+		if !terminal {
+			do(do, m, f)
+		}
 	}
 
 	do(do, m, f)
@@ -350,26 +395,20 @@ func (c *ParallelComposer) Execute(m *Message) <-chan *Message {
 	f, wg := c.makeChan()
 
 	do := func(do recfunc, m *Message, f chan<- *Message) {
-		input := copyMessage(m)
+		cmd := c.lpop()
+		terminal := len(c.compositions()) == 0
 
-		go func(c *ParallelComposer) {
+		go func(cmd Composer, terminal bool) {
 			defer wg.Done()
-			cmd := c.lpop()
-			output := <-cmd.Execute(input)
-
-			if c.isRecorded() {
-				f <- output
+			toSend := performJob(cmd, m)
+			if terminal || c.isRecorded() {
+				f <- toSend
 			}
+		}(cmd, terminal)
 
-			if len(c.compositions()) == 0 {
-				if !c.isRecorded() {
-					f <- output
-				}
-			} else {
-				do(do, m, f)
-			}
-
-		}(c)
+		if !terminal {
+			do(do, m, f)
+		}
 	}
 
 	do(do, m, f)
@@ -377,8 +416,8 @@ func (c *ParallelComposer) Execute(m *Message) <-chan *Message {
 }
 
 //Constructor for HashComposer
-func (g *Gilmour) NewFuncComposition(s interface{}) *FuncComposition {
-	fc := &FuncComposition{s}
+func (g *Gilmour) NewFuncComposition(s interface{}) *FuncComposer {
+	fc := &FuncComposer{s}
 	return fc
 }
 

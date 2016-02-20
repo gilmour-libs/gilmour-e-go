@@ -1,9 +1,10 @@
-package protocol
+package gilmour
 
 import (
-	"code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"os"
+
+	"github.com/pborman/uuid"
 )
 
 func getHostname() string {
@@ -22,7 +23,7 @@ func getUUID() string {
 	return uuid.New()
 }
 
-func MakeIdent() string {
+func makeIdent() string {
 	hostname := getHostname()
 	pid := getPid()
 	uuid := getUUID()
@@ -30,6 +31,6 @@ func MakeIdent() string {
 	return fmt.Sprintf("%v-pid-%v-uuid-%v", hostname, pid, uuid)
 }
 
-func MakeSenderId() string {
+func makeSenderId() string {
 	return getUUID()
 }

@@ -1,21 +1,24 @@
 package gilmour
 
 import (
+	"fmt"
 	"strings"
 )
 
-func subscribeHealth(self *Gilmour) {
-	ident := self.GetIdent()
-	health_topic := self.backend.HealthTopic(ident)
+func healthTopic(ident string) string {
+	return fmt.Sprintf("gilmour.health.%v", ident)
+}
 
+func subscribeHealth(g *Gilmour) {
+	health_topic := healthTopic(g.getIdent())
 	handlerOpts := NewHandlerOpts().SetGroup("exclusive")
 
-	self.ReplyTo(health_topic, func(r *Request, w *Message) {
+	g.ReplyTo(health_topic, func(r *Request, w *Message) {
 		topics := []string{}
 
-		resp_topic := self.backend.ResponseTopic("")
+		resp_topic := responseTopic("")
 
-		for t, _ := range self.getAllSubscribers() {
+		for t, _ := range g.getAllSubscribers() {
 			if strings.HasPrefix(t, resp_topic) || strings.HasPrefix(t, health_topic) {
 				//Do Nothing, these are internal topics
 			} else {
