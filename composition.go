@@ -1,9 +1,6 @@
 package gilmour
 
-import (
-	"log"
-	"sync"
-)
+import "sync"
 
 const (
 	andand   = "andand"
@@ -42,7 +39,8 @@ type Composer interface {
 // which will be applied to the previous command's output Message only if the
 // type is convertible. In case of a failure it shall raise an Error.
 type FuncComposer struct {
-	seed interface{}
+	seed        func(*Message) *Message
+	isStreaming bool
 }
 
 func performJob(cmd Composer, m *Message) *Message {
@@ -89,25 +87,15 @@ func outChan() chan *Message {
 }
 
 func (hc *FuncComposer) IsStreaming() bool {
-	return false
+	return hc.isStreaming
 }
 
 func (hc *FuncComposer) Execute(m *Message) <-chan *Message {
-	err := compositionMerge(&m.Data, &hc.seed)
-	if err != nil {
-		m := NewMessage()
-		m.SetCode(500)
-		m.SetData(err.Error())
-	}
+	outChan := make(chan *Message, 1)
+	defer close(outChan)
 
-	if m.GetCode() == 0 {
-		m.SetCode(200)
-	}
-
-	finally := outChan()
-	finally <- m
-	close(finally)
-	return finally
+	outChan <- hc.seed(m)
+	return outChan
 }
 
 // Command represent the each command inside a Pipeline.
@@ -139,7 +127,7 @@ func (rc *RequestComposer) With(t interface{}) *RequestComposer {
 func (rc *RequestComposer) Execute(m *Message) <-chan *Message {
 	if rc.message != nil {
 		if err := compositionMerge(&m.Data, &rc.message); err != nil {
-			log.Println(err)
+			panic(err)
 		}
 	}
 
@@ -416,8 +404,8 @@ func (c *ParallelComposer) Execute(m *Message) <-chan *Message {
 }
 
 //Constructor for HashComposer
-func (g *Gilmour) NewFuncComposition(s interface{}) *FuncComposer {
-	fc := &FuncComposer{s}
+func (g *Gilmour) NewFuncComposition(s func(*Message) *Message) *FuncComposer {
+	fc := &FuncComposer{seed: s}
 	return fc
 }
 

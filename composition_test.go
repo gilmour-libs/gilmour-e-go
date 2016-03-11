@@ -53,25 +53,24 @@ func makeMessage(data interface{}) *Message {
 // Basic Merger which can be created and exposes a Transform method.
 func TestFuncComposition(t *testing.T) {
 	key := "merge"
-	data := StrMap{"arg": 1}
-	c := engine.NewFuncComposition(StrMap{key: 1})
-	msg := <-c.Execute(makeMessage(data))
+
+	c := engine.NewFuncComposition(func(m *Message) *Message {
+		var d StrMap
+		m.GetData(&d)
+		d[key] = 1
+		return (&Message{}).SetCode(200).SetData(d)
+	})
+
+	msg := <-c.Execute(makeMessage(StrMap{"arg": 1}))
 	if msg.GetCode() != 200 {
 		t.Error("Should not have raised Error")
 	}
 
+	var data StrMap
+	msg.GetData(&data)
+
 	if _, ok := data[key]; !ok {
 		t.Error("Must have", key, "in final output")
-	}
-}
-
-// Transformation should fail while merging string to StrMap
-func TestFuncCompositionFail(t *testing.T) {
-	data := "arg"
-	c := engine.NewFuncComposition(StrMap{"merge": 1})
-	msg := <-c.Execute(makeMessage(data))
-	if msg.GetCode() == 500 {
-		t.Error("Should have raised error")
 	}
 }
 
@@ -144,7 +143,12 @@ func TestComposeNested(t *testing.T) {
 	c11 := engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
 
 	c2 := engine.NewPipe(
-		engine.NewFuncComposition(StrMap{"fake-two": 1}),
+		engine.NewFuncComposition(func(m *Message) *Message {
+			var d StrMap
+			m.GetData(&d)
+			d["fake-two"] = 1
+			return (&Message{}).SetData(d)
+		}),
 		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
@@ -163,7 +167,12 @@ func TestComposeNested(t *testing.T) {
 
 func TestComposeAndAnd(t *testing.T) {
 	c2 := engine.NewPipe(
-		engine.NewFuncComposition(StrMap{"fake-two": 1}),
+		engine.NewFuncComposition(func(m *Message) *Message {
+			var d StrMap
+			m.GetData(&d)
+			d["fake-two"] = 1
+			return (&Message{}).SetData(d)
+		}),
 		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
