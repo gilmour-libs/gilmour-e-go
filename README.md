@@ -2,3 +2,7 @@
 
 # gilmour-e-go
 Gilmour's implementation in Go
+
+# Documentation
+
+[Latest Docs](https://godoc.org/github.com/gilmour-libs/gilmour-e-go)
