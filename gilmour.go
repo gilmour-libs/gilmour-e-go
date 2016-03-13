@@ -177,9 +177,14 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 	}
 }
 
-func (g *Gilmour) sendTimeout(senderId, channel string) {
+func (g *Gilmour) timeoutMessage(senderId string) *Message {
 	msg := &Message{}
 	msg.setSender(senderId).SetCode(499).SetData("Execution timed out")
+	return msg
+}
+
+func (g *Gilmour) sendTimeout(senderId, channel string) {
+	msg := g.timeoutMessage(senderId)
 	if err := g.publish(channel, msg); err != nil {
 		ui.Alert(err.Error())
 	}
@@ -375,34 +380,35 @@ func (g *Gilmour) UnsubscribeReply(topic string, s *Subscription) {
 }
 
 // Request part of Request-Reply design pattern.
-func (g *Gilmour) Request(topic string, msg *Message, handler RequestHandler, opts *RequestOpts) (sender string, err error) {
+func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (*Response, error) {
+	if has, err := g.backend.HasActiveSubscribers(g.requestDestination(topic)); err != nil {
+		return nil, err
+	} else if !has {
+		return nil, errors.New("No active listeners for: " + topic)
+	}
+
 	if msg == nil {
 		msg = NewMessage()
 	}
 
-	sender = makeSenderId()
+	sender := makeSenderId()
 	msg.setSender(sender)
+	respChannel := responseTopic(sender)
 
 	if opts == nil {
 		opts = NewRequestOpts()
 	}
 
-	if handler == nil {
-		return sender, errors.New("Cannot use Request without a handler")
-	}
-
-	if has, err := g.backend.HasActiveSubscribers(g.requestDestination(topic)); err != nil {
-		return sender, err
-	} else if !has {
-		return sender, errors.New("No active listeners for: " + topic)
-	}
-
-	respChannel := responseTopic(sender)
-
 	//Wait for a responseHandler
-	rOpts := NewHandlerOpts().setOneShot().sendResponse(false)
-	g.ReplyTo(respChannel, handler, rOpts)
+	f := make(chan *Message, 1)
 
+	rOpts := NewHandlerOpts().setOneShot().sendResponse(false)
+	g.ReplyTo(respChannel, func(req *Request, _ *Message) {
+		f <- req.gData
+	}, rOpts)
+
+	// Send Timeout message to channel, Need to send timeout over the wire,
+	// to ensure gilmour cleans up the oneShot response handlers as well.
 	timeout := opts.GetTimeout()
 	if timeout > 0 {
 		time.AfterFunc(time.Duration(timeout)*time.Second, func() {
@@ -410,34 +416,11 @@ func (g *Gilmour) Request(topic string, msg *Message, handler RequestHandler, op
 		})
 	}
 
-	return sender, g.publish(g.requestDestination(topic), msg)
-}
+	g.publish(g.requestDestination(topic), msg)
 
-// Same as Request but emulates synchronous behavior. Will not return until you
-// have error or data.
-func (g *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*Request, error) {
-
-	var req *Request
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	if opts == nil {
-		opts = NewRequestOpts()
-	}
-
-	handler := func(r *Request, resp *Message) {
-		defer wg.Done()
-		req = r
-	}
-
-	_, err := g.Request(topic, msg, handler, opts)
-	if err != nil {
-		wg.Done()
-	}
-
-	wg.Wait()
-	return req, err
+	response := newResponse(1)
+	response.write(<-f)
+	return response, nil
 }
 
 //Slot counterpart of Signal Slot architecture.
