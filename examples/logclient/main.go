@@ -18,7 +18,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
 	engine := echoEngine()
-	engine.Slot("example.log", func(req *G.Request, _ *G.Message) {
+	engine.Slot("example.log", func(req *G.Request) {
 		var msg string
 		if err := req.Data(&msg); err != nil {
 			log.Println("Cannot parse log %v", err.Error())

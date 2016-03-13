@@ -132,7 +132,7 @@ func TestSubscribePingSync(t *testing.T) {
 func TestWildcardSlot(t *testing.T) {
 	opts := NewHandlerOpts().SetGroup("wildcard_group")
 	topic := fmt.Sprintf("%v*", PingTopic)
-	_, err := engine.Slot(topic, func(req *Request, resp *Message) {}, opts)
+	_, err := engine.Slot(topic, func(*Request) {}, opts)
 	if err != nil {
 		t.Error("Error Subscribing", PingTopic, err.Error())
 	}
@@ -181,7 +181,7 @@ func TestHealthGetAll(t *testing.T) {
 
 func TestUnsubscribe(t *testing.T) {
 	topic := randSeq(10)
-	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {}, nil)
+	sub, err := engine.Slot(topic, func(req *Request) {}, nil)
 	if err != nil {
 		t.Error("Error Subscribing", topic, err.Error())
 		return
@@ -213,7 +213,7 @@ func TestTwiceSlot(t *testing.T) {
 	}()
 
 	for i := 0; i < 2; i++ {
-		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {}, opts)
+		sub, err := engine.Slot(topic, func(_ *Request) {}, opts)
 		if sub != nil {
 			subs = append(subs, sub)
 		} else if err != nil {
@@ -235,7 +235,7 @@ func TestTwiceSlotFail(t *testing.T) {
 	}()
 
 	for i := 0; i < count; i++ {
-		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {}, opts)
+		sub, err := engine.Slot(topic, func(_ *Request) {}, opts)
 		if sub != nil {
 			subs = append(subs, sub)
 		} else if i == 1 {
@@ -287,7 +287,7 @@ func TestSignalSlotStruct(t *testing.T) {
 	out_chan := make(chan *slotStruct, 1)
 	opts := NewHandlerOpts()
 
-	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
+	sub, err := engine.Slot(topic, func(req *Request) {
 		var x slotStruct
 		req.Data(&x)
 		out_chan <- &x
@@ -322,7 +322,7 @@ func TestSignalSlotStructFailed(t *testing.T) {
 	out_chan := make(chan *failedSlotStruct, 1)
 	opts := NewHandlerOpts()
 
-	sub, err := engine.Slot(topic, func(req *Request, resp *Message) {
+	sub, err := engine.Slot(topic, func(req *Request) {
 		var x failedSlotStruct
 		req.Data(&x)
 		out_chan <- &x
@@ -378,7 +378,7 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 		data := fmt.Sprintf("hello %v", i)
 		opts := NewHandlerOpts().SetGroup(randSeq(10))
 
-		sub, err := engine.Slot(topic, func(_ *Request, _ *Message) {
+		sub, err := engine.Slot(topic, func(_ *Request) {
 			out_chan <- data
 		}, opts)
 
@@ -447,7 +447,7 @@ func TestReceiveOnWildcard(t *testing.T) {
 	//Subscribe to the wildcard topic.
 	sub, _ := engine.Slot(
 		topic,
-		func(_ *Request, _ *Message) {
+		func(_ *Request) {
 			out_chan <- PingResponse
 		},
 		nil,

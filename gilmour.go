@@ -144,7 +144,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 	}(done)
 
 	// Start a timeout handler, which writes on the Done channel, ahead of the
-	// Handler. This might result in a RACE condition, as there is no way to
+	// handler. This might result in a RACE condition, as there is no way to
 	// kill a goroutine, since they are not preemptive.
 
 	timeout := s.GetOpts().GetTimeout()
@@ -247,7 +247,7 @@ func (g *Gilmour) removeSubscriber(topic string, s *Subscription) {
 	g.subscriber.delete(topic, s)
 }
 
-func (g *Gilmour) addSubscriber(t string, h Handler, o *HandlerOpts) *Subscription {
+func (g *Gilmour) addSubscriber(t string, h handler, o *HandlerOpts) *Subscription {
 	return g.subscriber.add(t, h, o)
 }
 
@@ -265,7 +265,7 @@ func (g *Gilmour) isExclusiveDuplicate(topic, group string) bool {
 }
 
 //Underlying subscribe method.
-func (g *Gilmour) subscribe(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+func (g *Gilmour) subscribe(topic string, h handler, opts *HandlerOpts) (*Subscription, error) {
 	group := opts.GetGroup()
 
 	if group != "" && g.isExclusiveDuplicate(topic, group) {
@@ -349,7 +349,7 @@ func (g *Gilmour) slotDestination(topic string) string {
 }
 
 // Reply part of Request-Reply design pattern.
-func (g *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+func (g *Gilmour) ReplyTo(topic string, h RequestHandler, opts *HandlerOpts) (*Subscription, error) {
 	if strings.Contains(topic, "*") {
 		return nil, errors.New("ReplyTo cannot have wildcard topics")
 	}
@@ -362,7 +362,11 @@ func (g *Gilmour) ReplyTo(topic string, h Handler, opts *HandlerOpts) (*Subscrip
 		opts.SetGroup("_default")
 	}
 
-	return g.subscribe(g.requestDestination(topic), h, opts)
+	handler := func(req *Request, resp *Message) {
+		h(req, resp)
+	}
+
+	return g.subscribe(g.requestDestination(topic), handler, opts)
 }
 
 //Unsubscribe Previously registered Reply to.
@@ -371,7 +375,7 @@ func (g *Gilmour) UnsubscribeReply(topic string, s *Subscription) {
 }
 
 // Request part of Request-Reply design pattern.
-func (g *Gilmour) Request(topic string, msg *Message, handler Handler, opts *RequestOpts) (sender string, err error) {
+func (g *Gilmour) Request(topic string, msg *Message, handler RequestHandler, opts *RequestOpts) (sender string, err error) {
 	if msg == nil {
 		msg = NewMessage()
 	}
@@ -437,13 +441,17 @@ func (g *Gilmour) SyncRequest(topic string, msg *Message, opts *RequestOpts) (*R
 }
 
 //Slot counterpart of Signal Slot architecture.
-func (g *Gilmour) Slot(topic string, h Handler, opts *HandlerOpts) (*Subscription, error) {
+func (g *Gilmour) Slot(topic string, h SlotHandler, opts *HandlerOpts) (*Subscription, error) {
 	if opts == nil {
 		opts = &HandlerOpts{}
 	}
 
 	opts.setSlot()
-	return g.subscribe(g.slotDestination(topic), h, opts)
+	handler := func(req *Request, _ *Message) {
+		h(req)
+	}
+
+	return g.subscribe(g.slotDestination(topic), handler, opts)
 }
 
 func (g *Gilmour) UnsubscribeSlot(topic string, s *Subscription) {

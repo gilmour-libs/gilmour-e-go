@@ -12,4 +12,6 @@ Please note that in case of Signal-Slot, as the design pattern suggests,
 outgoing *Message is redundant nd any data written to Message will not be
 transmitted to any reciver, because there is no reciver awaiting the response.
 */
-type Handler func(incoming *Request, outgoing *Message)
+type handler func(*Request, *Message)
+type RequestHandler func(*Request, *Message)
+type SlotHandler func(*Request)
