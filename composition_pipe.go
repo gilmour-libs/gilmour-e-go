@@ -5,18 +5,18 @@ type PipeComposition struct {
 }
 
 func (c *PipeComposition) Execute(m *Message) (resp *Response, err error) {
-	do := func(do recfunc, m *Message, f *Response) {
+	do := func(do recfunc, m *Message) {
 		cmd := c.lpop()
 		resp, err = performJob(cmd, m)
 
 		if len(c.executables()) > 0 && resp.Code() == 200 && err == nil {
 			resp = inflateResponse(resp)
-			do(do, resp.Next(), f)
+			do(do, resp.Next())
 			return
 		}
 	}
 
-	do(do, copyMessage(m), resp)
+	do(do, copyMessage(m))
 	return
 }
 

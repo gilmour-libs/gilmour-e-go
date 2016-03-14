@@ -15,22 +15,22 @@ type BatchComposition struct {
 func (c *BatchComposition) Execute(m *Message) (resp *Response, err error) {
 	batchResp := c.makeResponse()
 
-	do := func(do recfunc, m *Message, f *Response) {
+	do := func(do recfunc, m *Message) {
 		cmd := c.lpop()
 		resp, err = performJob(cmd, m)
 
 		// Inflate and record the output in a single response.
 		if c.isRecorded() {
 			r := inflateResponse(resp)
-			f.write(r.Next())
+			batchResp.write(r.Next())
 		}
 
 		if len(c.executables()) > 0 {
-			do(do, m, f)
+			do(do, m)
 		}
 	}
 
-	do(do, m, batchResp)
+	do(do, m)
 
 	// Automatically return last executable's response or override with
 	// recorded output.

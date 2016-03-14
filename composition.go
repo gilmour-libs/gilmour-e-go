@@ -179,4 +179,4 @@ func (c *recordableComposition) makeMessage(data interface{}) *Message {
 	return m
 }
 
-type recfunc func(recfunc, *Message, *Response)
+type recfunc func(recfunc, *Message)

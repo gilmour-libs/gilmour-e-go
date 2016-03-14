@@ -15,11 +15,13 @@ type ParallelComposition struct {
 	recordableComposition
 }
 
+type parallelfunc func(parallelfunc, *Message, *Response)
+
 func (c *ParallelComposition) Execute(m *Message) (*Response, error) {
 	resp := c.makeResponse()
 	var wg sync.WaitGroup
 
-	do := func(do recfunc, m *Message, f *Response) {
+	do := func(do parallelfunc, m *Message, f *Response) {
 		wg.Add(1)
 		cmd := c.lpop()
 
