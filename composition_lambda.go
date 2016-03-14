@@ -1,8 +1,8 @@
 package gilmour
 
-//Constructor for HashComposer
-func (g *Gilmour) NewLambda(s func(*Message) (*Message, error)) *LambdaComposer {
-	fc := &LambdaComposer{seed: s}
+//Constructor for HashComposition
+func (g *Gilmour) NewLambda(s func(*Message) (*Message, error)) *LambdaComposition {
+	fc := &LambdaComposition{seed: s}
 	return fc
 }
 
@@ -11,11 +11,11 @@ func (g *Gilmour) NewLambda(s func(*Message) (*Message, error)) *LambdaComposer 
 // seeding it to the next command. Requires to be seeded with an interface
 // which will be applied to the previous command's output Message only if the
 // type is convertible. In case of a failure it shall raise an Error.
-type LambdaComposer struct {
+type LambdaComposition struct {
 	seed func(*Message) (*Message, error)
 }
 
-func (hc *LambdaComposer) Execute(m *Message) (*Response, error) {
+func (hc *LambdaComposition) Execute(m *Message) (*Response, error) {
 	resp := newResponse(1)
 	msg, err := hc.seed(m)
 	resp.write(msg)

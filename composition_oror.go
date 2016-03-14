@@ -1,17 +1,17 @@
 package gilmour
 
-func (g *Gilmour) NewOrOr(cmds ...Executable) *OrOrComposer {
-	c := new(OrOrComposer)
+func (g *Gilmour) NewOrOr(cmds ...Executable) *OrOrComposition {
+	c := new(OrOrComposition)
 	c.setEngine(g)
 	c.add(cmds...)
 	return c
 }
 
-type OrOrComposer struct {
+type OrOrComposition struct {
 	composition
 }
 
-func (c *OrOrComposer) Execute(m *Message) (resp *Response, err error) {
+func (c *OrOrComposition) Execute(m *Message) (resp *Response, err error) {
 	do := func(do recfunc, m *Message, f *Response) {
 		cmd := c.lpop()
 		resp, err = performJob(cmd, m)

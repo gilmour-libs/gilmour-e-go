@@ -1,18 +1,18 @@
 package gilmour
 
 //New AndAnd composition.
-func (g *Gilmour) NewAndAnd(cmds ...Executable) *AndAndComposer {
-	c := new(AndAndComposer)
+func (g *Gilmour) NewAndAnd(cmds ...Executable) *AndAndComposition {
+	c := new(AndAndComposition)
 	c.setEngine(g)
 	c.add(cmds...)
 	return c
 }
 
-type AndAndComposer struct {
+type AndAndComposition struct {
 	composition
 }
 
-func (c *AndAndComposer) Execute(m *Message) (resp *Response, err error) {
+func (c *AndAndComposition) Execute(m *Message) (resp *Response, err error) {
 	do := func(do recfunc, m *Message, r *Response) {
 		cmd := c.lpop()
 		resp, err = performJob(cmd, m)

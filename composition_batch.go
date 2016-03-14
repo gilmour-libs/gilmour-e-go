@@ -1,18 +1,18 @@
 package gilmour
 
 //New Batch composition
-func (g *Gilmour) NewBatch(cmds ...Executable) *BatchComposer {
-	c := new(BatchComposer)
+func (g *Gilmour) NewBatch(cmds ...Executable) *BatchComposition {
+	c := new(BatchComposition)
 	c.setEngine(g)
 	c.add(cmds...)
 	return c
 }
 
-type BatchComposer struct {
+type BatchComposition struct {
 	recordableComposition
 }
 
-func (c *BatchComposer) Execute(m *Message) (resp *Response, err error) {
+func (c *BatchComposition) Execute(m *Message) (resp *Response, err error) {
 	batchResp := c.makeResponse()
 
 	do := func(do recfunc, m *Message, f *Response) {

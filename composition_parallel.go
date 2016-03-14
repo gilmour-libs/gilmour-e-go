@@ -3,19 +3,19 @@ package gilmour
 import "sync"
 
 //New Parallel composition
-func (g *Gilmour) NewParallel(cmds ...Executable) *ParallelComposer {
-	c := new(ParallelComposer)
+func (g *Gilmour) NewParallel(cmds ...Executable) *ParallelComposition {
+	c := new(ParallelComposition)
 	c.setEngine(g)
 	c.add(cmds...)
 	c.RecordOutput()
 	return c
 }
 
-type ParallelComposer struct {
+type ParallelComposition struct {
 	recordableComposition
 }
 
-func (c *ParallelComposer) Execute(m *Message) (*Response, error) {
+func (c *ParallelComposition) Execute(m *Message) (*Response, error) {
 	resp := c.makeResponse()
 	var wg sync.WaitGroup
 
