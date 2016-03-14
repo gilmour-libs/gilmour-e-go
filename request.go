@@ -30,6 +30,52 @@ func (r *Request) bytes() []byte {
 	return byt
 }
 
-func NewRequest(t string, gd *Message) *Request {
-	return &Request{t, gd}
+//New Request composition
+func (g *Gilmour) NewRequest(topic string) *RequestComposer {
+	rc := new(RequestComposer)
+	rc.setEngine(g)
+	rc.topic = topic
+	rc.opts = nil
+	return rc
+}
+
+func (g *Gilmour) NewRequestWithOpts(topic string, opts *RequestOpts) *RequestComposer {
+	rc := new(RequestComposer)
+	rc.setEngine(g)
+	rc.topic = topic
+	rc.opts = opts
+	return rc
+}
+
+// Command represent the each command inside a Pipeline.
+// Requires a topic to send the message to, and an optional transformer.
+type RequestComposer struct {
+	topic   string
+	opts    *RequestOpts
+	engine  *Gilmour
+	message interface{}
+}
+
+//Set the Gilmour Engine required for execution
+func (rc *RequestComposer) setEngine(g *Gilmour) {
+	rc.engine = g
+}
+
+func (rc *RequestComposer) With(t interface{}) *RequestComposer {
+	if rc.message != nil {
+		panic("Cannot change the message after its been set")
+	}
+
+	rc.message = t
+	return rc
+}
+
+func (rc *RequestComposer) Execute(m *Message) (*Response, error) {
+	if rc.message != nil {
+		if err := compositionMerge(&m.Data, &rc.message); err != nil {
+			return nil, err
+		}
+	}
+
+	return rc.engine.request(rc.topic, m, rc.opts)
 }

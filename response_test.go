@@ -21,7 +21,7 @@ func TestResponseNext(t *testing.T) {
 	}
 
 	recv := 0
-	for x.Next() != nil {
+	for y := x.Next(); y != nil; y = x.Next() {
 		recv++
 	}
 

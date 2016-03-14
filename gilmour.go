@@ -110,8 +110,7 @@ func (g *Gilmour) processMessage(msg *protocol.Message) {
 func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 	senderId := m.GetSender()
 
-	req := NewRequest(topic, m)
-
+	req := &Request{topic, m}
 	res := &Message{}
 	res.setSender(responseTopic(senderId))
 
@@ -380,7 +379,7 @@ func (g *Gilmour) UnsubscribeReply(topic string, s *Subscription) {
 }
 
 // Request part of Request-Reply design pattern.
-func (g *Gilmour) Request(topic string, msg *Message, opts *RequestOpts) (*Response, error) {
+func (g *Gilmour) request(topic string, msg *Message, opts *RequestOpts) (*Response, error) {
 	if has, err := g.backend.HasActiveSubscribers(g.requestDestination(topic)); err != nil {
 		return nil, err
 	} else if !has {

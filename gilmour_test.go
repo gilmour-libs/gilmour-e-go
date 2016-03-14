@@ -90,7 +90,8 @@ func TestSubscribePing(t *testing.T) {
 }
 
 func TestSubscribePingResponse(t *testing.T) {
-	resp, err := engine.Request(PingTopic, NewMessage().SetData("ping?"), nil)
+	req := engine.NewRequest(PingTopic)
+	resp, err := req.Execute(NewMessage().SetData("ping?"))
 	if err != nil {
 		t.Error("Error in response", err.Error())
 		return
@@ -106,8 +107,8 @@ func TestSubscribePingResponse(t *testing.T) {
 }
 
 func TestSubscribePingSync(t *testing.T) {
-	data := NewMessage().SetData("ping?")
-	response, err := engine.Request(PingTopic, data, nil)
+	req := engine.NewRequest(PingTopic)
+	response, err := req.Execute(NewMessage().SetData("ping?"))
 	if err != nil {
 		t.Error("Error in sync response", err.Error())
 		return
@@ -407,7 +408,8 @@ func TestHealthResponse(t *testing.T) {
 
 	data := NewMessage().SetData("is-healthy?")
 
-	resp, err := engine.Request(healthTopic(engine.getIdent()), data, nil)
+	req := engine.NewRequest(healthTopic(engine.getIdent()))
+	resp, err := req.Execute(data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -470,7 +472,8 @@ func TestSendAndReceive(t *testing.T) {
 
 	data := NewMessage().SetData("ping?")
 
-	resp, err := engine.Request(PingTopic, data, nil)
+	req := engine.NewRequest(PingTopic)
+	resp, err := req.Execute(data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -498,7 +501,8 @@ func TestPublisherTimeout(t *testing.T) {
 	data := NewMessage().SetData(sleepFor)
 	opts := NewRequestOpts().SetTimeout(2)
 
-	resp, err := engine.Request(SleepTopic, data, opts)
+	req := engine.NewRequestWithOpts(SleepTopic, opts)
+	resp, err := req.Execute(data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -526,7 +530,8 @@ func TestSansListenerSlot(t *testing.T) {
 }
 
 func TestSansListenerRequest(t *testing.T) {
-	_, err := engine.Request("humpty-dumpty", nil, nil)
+	req := engine.NewRequest("humpty-dumpty")
+	_, err := req.Execute(nil)
 	if err == nil || !strings.Contains(err.Error(), "listeners") {
 		t.Error(err.Error())
 	}
@@ -551,8 +556,8 @@ func TestSubscriberTimeout(t *testing.T) {
 	}
 
 	data := NewMessage().SetData("send")
-
-	resp, err := engine.Request(topic, data, nil)
+	req := engine.NewRequest(topic)
+	resp, err := req.Execute(data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -590,8 +595,8 @@ func TestHandlerException(t *testing.T) {
 	}
 
 	data := NewMessage().SetData("send")
-
-	resp, err := engine.Request(topic, data, nil)
+	req := engine.NewRequest(topic)
+	resp, err := req.Execute(data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -620,8 +625,9 @@ func TestSansListener(t *testing.T) {
 
 func TestConfirmSansListener(t *testing.T) {
 	data := NewMessage().SetData("ping?")
+	req := engine.NewRequest("ping-confirm-sans-listener")
 
-	if _, err := engine.Request("ping-confirm-sans-listener", data, nil); err != nil {
+	if _, err := req.Execute(data); err != nil {
 		if !strings.Contains(err.Error(), "active listeners") {
 			t.Error(err.Error())
 		}
