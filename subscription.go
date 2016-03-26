@@ -7,7 +7,7 @@ import (
 //Every subscriptionManager should implement this interface.
 type subscriber interface {
 	get(topic string) ([]*Subscription, bool)
-	add(t string, h Handler, o *HandlerOpts) *Subscription
+	add(t string, h handler, o *HandlerOpts) *Subscription
 	delete(topic string, s *Subscription)
 	deleteAll(topic string)
 	getAll() map[string][]*Subscription
@@ -15,7 +15,7 @@ type subscriber interface {
 
 //Returned for every topic that you subscribe to.
 type Subscription struct {
-	handler     Handler
+	handler     handler
 	handlerOpts *HandlerOpts
 }
 
@@ -23,7 +23,7 @@ func (s *Subscription) GetOpts() *HandlerOpts {
 	return s.handlerOpts
 }
 
-func (s *Subscription) GetHandler() Handler {
+func (s *Subscription) GetHandler() handler {
 	return s.handler
 }
 
@@ -53,7 +53,7 @@ func (s *subscriptionManager) get(topic string) ([]*Subscription, bool) {
 
 //add a new subscription for a topic. If this topic is being subscribed for
 //the first time, initialize an array of subscriptions.
-func (s *subscriptionManager) add(t string, h Handler, o *HandlerOpts) *Subscription {
+func (s *subscriptionManager) add(t string, h handler, o *HandlerOpts) *Subscription {
 	s.Lock()
 	defer s.Unlock()
 

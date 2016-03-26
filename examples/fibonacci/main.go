@@ -43,23 +43,26 @@ func generator(first, second float64, tick <-chan time.Time, e *G.Gilmour) {
 	packet := map[string]float64{"first": first, "second": second}
 	data := G.NewMessage().SetData(packet)
 
-	handler := func(req *G.Request, resp *G.Message) {
-		if req.Code() != 200 {
-			fmt.Println("Error in Handler", req.Code())
-			fmt.Println(req.RawData())
-			return
-		}
-
-		var next float64
-		if err := req.Data(&next); err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		generator(second, next, tick, e)
+	req := e.NewRequest(fibTopic)
+	resp, err := req.Execute(data)
+	if err != nil {
+		fmt.Println("Error in Handler", err)
+		return
 	}
 
-	e.Request(fibTopic, data, handler, nil)
+	if resp.Code() != 200 {
+		fmt.Println("Error in Handler", resp.Code())
+		return
+	}
+
+	var next float64
+	msg := resp.Next()
+	if err := msg.GetData(&next); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	generator(second, next, tick, e)
 }
 
 func main() {

@@ -15,20 +15,20 @@ func echoEngine() *G.Gilmour {
 }
 
 func echoRequest(wg *sync.WaitGroup, engine *G.Gilmour, msg string) {
-	data := G.NewMessage().SetData(msg)
-
-	handler := func(req *G.Request, resp *G.Message) {
-		defer wg.Done()
-
-		var msg string
-		if err := req.Data(&msg); err != nil {
-			fmt.Println("Echoclient: error", err.Error())
-		} else {
-			fmt.Println("Echoclient: received", msg)
-		}
+	req := engine.NewRequest("echo")
+	resp, err := req.Execute(G.NewMessage().SetData(msg))
+	if err != nil {
+		fmt.Println("Echoclient: error", err.Error())
 	}
 
-	engine.Request("echo", data, handler, nil)
+	defer wg.Done()
+
+	var output string
+	if err := resp.Next().GetData(&output); err != nil {
+		fmt.Println("Echoclient: error", err.Error())
+	} else {
+		fmt.Println("Echoclient: received", output)
+	}
 }
 
 func main() {

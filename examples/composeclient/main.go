@@ -7,68 +7,62 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
 )
 
+const url = "https://s3-us-west-1.amazonaws.com/ds-data-sample/test.txt"
+
 func echoEngine() *G.Gilmour {
 	redis := backends.MakeRedis("127.0.0.1:6379", "")
 	engine := G.Get(redis)
 	return engine
 }
 
-type MyComposer struct {
+type popular struct {
+	WordLength int
+	Score      int
+	Words      []string
 }
 
-func (m *MyComposer) Execute(msg *G.Message) <-chan *G.Message {
-	out := []*G.Message{}
+func converge(msg *G.Message) (*G.Message, error) {
+	out := []*popular{}
 	msg.GetData(&out)
 
 	pWords := make([][]string, 3)
 
 	for _, o := range out {
-		popular := struct {
-			WordLength int
-			Score      int
-			Words      []string
-		}{}
-		o.GetData(&popular)
-		pWords[popular.WordLength-3] = popular.Words
+		pWords[o.WordLength-3] = o.Words
 	}
 
-	outChan := make(chan *G.Message, 1)
-	outChan <- G.NewMessage().SetData(pWords)
-	close(outChan)
-	return outChan
-}
-
-func (m *MyComposer) IsStreaming() bool {
-	return false
+	return G.NewMessage().SetData(pWords), nil
 }
 
 func main() {
 	engine := echoEngine()
 	engine.Start()
 
-	batch := engine.NewPipe(
-		engine.NewRequestComposition("example.fetch"),
-		engine.NewRequestComposition("example.words"),
-		engine.NewRequestComposition("example.stopfilter"),
-		engine.NewRequestComposition("example.count"),
+	pipe := engine.NewPipe(
+		engine.NewRequest("example.fetch"),
+		engine.NewRequest("example.words"),
+		engine.NewRequest("example.stopfilter"),
+		engine.NewRequest("example.count"),
 		engine.NewParallel(
-			engine.NewRequestComposition("example.popular3"),
-			engine.NewRequestComposition("example.popular4"),
-			engine.NewRequestComposition("example.popular5"),
+			engine.NewRequest("example.popular3"),
+			engine.NewRequest("example.popular4"),
+			engine.NewRequest("example.popular5"),
 		),
-		&MyComposer{},
+		engine.NewLambda(converge),
 	)
 
-	data := G.NewMessage()
-	data.SetData("https://s3-us-west-1.amazonaws.com/ds-data-sample/test.txt")
+	resp, err := pipe.Execute(G.NewMessage().SetData(url))
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
-	msg := <-batch.Execute(data)
 	expected := [][]string{}
-	if err := msg.GetData(&expected); err != nil {
+	if err := resp.Next().GetData(&expected); err != nil {
 		log.Println(err)
 	} else {
-		for ix, words := range expected {
-			log.Printf("Popular %v letter words: %v\n", ix+3, words)
+		for _, words := range expected {
+			log.Printf("Popular words: %v\n", words)
 		}
 	}
 }

@@ -54,14 +54,19 @@ func makeMessage(data interface{}) *Message {
 func TestFuncComposition(t *testing.T) {
 	key := "merge"
 
-	c := engine.NewFuncComposition(func(m *Message) *Message {
+	c := engine.NewLambda(func(m *Message) (*Message, error) {
 		var d StrMap
 		m.GetData(&d)
 		d[key] = 1
-		return (&Message{}).SetCode(200).SetData(d)
+		return (&Message{}).SetCode(200).SetData(d), nil
 	})
 
-	msg := <-c.Execute(makeMessage(StrMap{"arg": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"arg": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	msg := resp.Next()
 	if msg.GetCode() != 200 {
 		t.Error("Should not have raised Error")
 	}
@@ -77,10 +82,15 @@ func TestFuncComposition(t *testing.T) {
 func TestCompositionExecute(t *testing.T) {
 
 	data := StrMap{}
-	c := engine.NewRequestComposition(topicOne)
+	c := engine.NewRequest(topicOne)
 
-	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
-	m.GetData(&data)
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	msg := resp.Next()
+	msg.GetData(&data)
 
 	for _, key := range []string{"input", "ack-one"} {
 		if _, ok := data[key]; !ok {
@@ -91,9 +101,14 @@ func TestCompositionExecute(t *testing.T) {
 
 func TestCompositionMergeExecute(t *testing.T) {
 	data := StrMap{}
-	c := engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
+	c := engine.NewRequest(topicOne).With(StrMap{"merge-one": 1})
 
-	m := <-c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	m := resp.Next()
 	m.GetData(&data)
 
 	for _, key := range []string{"input", "ack-one", "merge-one"} {
@@ -107,9 +122,14 @@ func TestCompositionMergeExecute(t *testing.T) {
 // Output must contain the output of the micro service morphed with the
 // transformation.
 func TestComposePipe(t *testing.T) {
-	c := engine.NewPipe(engine.NewRequestComposition(topicOne).With(StrMap{"merge": 1}))
+	c := engine.NewPipe(engine.NewRequest(topicOne).With(StrMap{"merge": 1}))
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	msg := resp.Next()
 	expected := StrMap{}
 	msg.GetData(&expected)
 
@@ -124,11 +144,16 @@ func TestComposePipe(t *testing.T) {
 
 func TestComposeComplex(t *testing.T) {
 	c := engine.NewPipe(
-		engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
-		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+		engine.NewRequest(topicOne).With(StrMap{"merge-one": 1}),
+		engine.NewRequest(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	msg := resp.Next()
 	expected := StrMap{}
 	msg.GetData(&expected)
 
@@ -140,21 +165,26 @@ func TestComposeComplex(t *testing.T) {
 }
 
 func TestComposeNested(t *testing.T) {
-	c11 := engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1})
+	c11 := engine.NewRequest(topicOne).With(StrMap{"merge-one": 1})
 
 	c2 := engine.NewPipe(
-		engine.NewFuncComposition(func(m *Message) *Message {
+		engine.NewLambda(func(m *Message) (*Message, error) {
 			var d StrMap
 			m.GetData(&d)
 			d["fake-two"] = 1
-			return (&Message{}).SetData(d)
+			return (&Message{}).SetData(d), nil
 		}),
-		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+		engine.NewRequest(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
 	c1 := engine.NewPipe(c11, c2)
 
-	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c1.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	msg := resp.Next()
 	expected := StrMap{}
 	msg.GetData(&expected)
 
@@ -167,21 +197,26 @@ func TestComposeNested(t *testing.T) {
 
 func TestComposeAndAnd(t *testing.T) {
 	c2 := engine.NewPipe(
-		engine.NewFuncComposition(func(m *Message) *Message {
+		engine.NewLambda(func(m *Message) (*Message, error) {
 			var d StrMap
 			m.GetData(&d)
 			d["fake-two"] = 1
-			return (&Message{}).SetData(d)
+			return (&Message{}).SetData(d), nil
 		}),
-		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+		engine.NewRequest(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
 	c1 := engine.NewAndAnd(
-		engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
+		engine.NewRequest(topicOne).With(StrMap{"merge-one": 1}),
 		c2,
 	)
 
-	msg := <-c1.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c1.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	msg := resp.Next()
 	expected := StrMap{}
 	msg.GetData(&expected)
 
@@ -200,29 +235,38 @@ func TestComposeAndAnd(t *testing.T) {
 
 func TestComposeAndAndFail(t *testing.T) {
 	c := engine.NewAndAnd(
-		engine.NewRequestComposition(topicOne),
-		engine.NewRequestComposition(topicBadTwo),
-		engine.NewRequestComposition(topicTwo),
+		engine.NewRequest(topicOne),
+		engine.NewRequest(topicBadTwo),
+		engine.NewRequest(topicTwo),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
 
+	msg := resp.Next()
 	if msg.GetCode() != 500 {
 		t.Error("Request should have failed")
 	}
 
-	if len(c.compositions()) != 1 {
+	if len(c.executables()) != 1 {
 		t.Error("Composition should have been left with more commands.")
 	}
 }
 
 func TestComposeBatchPass(t *testing.T) {
 	c := engine.NewBatch(
-		engine.NewRequestComposition(topicOne).With(StrMap{"merge": 1}),
-		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+		engine.NewRequest(topicOne).With(StrMap{"merge": 1}),
+		engine.NewRequest(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+	}
+
+	msg := resp.Next()
 	expected := StrMap{}
 	msg.GetData(&expected)
 
@@ -241,12 +285,18 @@ func TestComposeBatchPass(t *testing.T) {
 
 func TestComposeBatchWontFail(t *testing.T) {
 	c := engine.NewBatch(
-		engine.NewRequestComposition(topicOne),
-		engine.NewRequestComposition(topicBadTwo),
-		engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
+		engine.NewRequest(topicOne),
+		engine.NewRequest(topicBadTwo),
+		engine.NewRequest(topicTwo).With(StrMap{"merge-two": 1}),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
+	}
+
+	msg := resp.Next()
 	expected := StrMap{}
 	msg.GetData(&expected)
 
@@ -254,7 +304,7 @@ func TestComposeBatchWontFail(t *testing.T) {
 		t.Error("Request should have passed")
 	}
 
-	if len(c.compositions()) != 0 {
+	if len(c.executables()) != 0 {
 		t.Error("Composition should not be left with any more commands.")
 	}
 
@@ -273,18 +323,22 @@ func TestComposeBatchWontFail(t *testing.T) {
 
 func TestBatch(t *testing.T) {
 	c := engine.NewBatch(
-		engine.NewRequestComposition(topicOne),
-		engine.NewRequestComposition(topicTwo),
-		engine.NewRequestComposition(topicThree),
+		engine.NewRequest(topicOne),
+		engine.NewRequest(topicTwo),
+		engine.NewRequest(topicThree),
 	)
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
+	f, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should nor have raised Error")
+		return
+	}
 
-	if cap(f) != 1 {
+	if f.Cap() != 1 {
 		t.Error("Must only capture 1 output.")
 	}
 
-	m := <-f
+	m := f.Next()
 	expected := StrMap{}
 	if err := m.GetData(&expected); err != nil {
 		t.Error("Must be valid message output")
@@ -295,16 +349,20 @@ func TestBatch(t *testing.T) {
 
 func TestBatchRecordOutput(t *testing.T) {
 	c := engine.NewBatch(
-		engine.NewRequestComposition(topicOne),
-		engine.NewRequestComposition(topicTwo),
-		engine.NewRequestComposition(topicThree),
+		engine.NewRequest(topicOne),
+		engine.NewRequest(topicTwo),
+		engine.NewRequest(topicThree),
 	)
 	c.RecordOutput()
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
+	}
 
 	out := []*Message{}
-	for msg := range f {
+	for msg := resp.Next(); msg != nil; msg = resp.Next() {
 		out = append(out, msg)
 	}
 
@@ -324,37 +382,47 @@ func TestBatchRecordOutput(t *testing.T) {
 
 func TestBatchBadRecord(t *testing.T) {
 	c := engine.NewBatch(
-		engine.NewRequestComposition(topicOne),
-		engine.NewRequestComposition(topicBadTwo),
-		engine.NewRequestComposition(topicThree),
+		engine.NewRequest(topicOne),
+		engine.NewRequest(topicBadTwo),
+		engine.NewRequest(topicThree),
 	)
 	c.RecordOutput()
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
-
-	out := []*Message{}
-	for msg := range f {
-		out = append(out, msg)
+	f, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
 	}
 
-	if len(out) != 3 {
+	if f.Cap() != 3 {
 		t.Error("Must have captured 3 outputs.")
 	}
 
-	second := out[1]
-	if second.GetCode() != 500 {
-		t.Error("Should have failed with 500")
+	i := 0
+	for msg := f.Next(); msg != nil; msg = f.Next() {
+		if i != 1 {
+			continue
+		}
+		if msg.GetCode() != 500 {
+			t.Error("Should have failed with 500")
+		}
 	}
 }
 
 func TestOrOr(t *testing.T) {
 	c := engine.NewOrOr(
-		engine.NewRequestComposition(topicBadTwo),
-		engine.NewRequestComposition(topicOne),
-		engine.NewRequestComposition(topicThree),
+		engine.NewRequest(topicBadTwo),
+		engine.NewRequest(topicOne),
+		engine.NewRequest(topicThree),
 	)
 
-	msg := <-c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
+	}
+
+	msg := resp.Next()
 	expected := StrMap{}
 	msg.GetData(&expected)
 
@@ -374,14 +442,23 @@ func TestOrOr(t *testing.T) {
 
 func TestParallel(t *testing.T) {
 	c := engine.NewParallel(
-		engine.NewRequestComposition(topicOne),
-		engine.NewRequestComposition(topicTwo),
-		engine.NewRequestComposition(topicThree),
+		engine.NewRequest(topicOne),
+		engine.NewRequest(topicTwo),
+		engine.NewRequest(topicThree),
 	)
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
+	}
+
+	if resp.Cap() != 3 {
+		t.Error("Must have captured 3 outputs.")
+	}
+
 	out := []*Message{}
-	for msg := range f {
+	for msg := resp.Next(); msg != nil; msg = resp.Next() {
 		out = append(out, msg)
 	}
 
@@ -402,25 +479,34 @@ func TestParallel(t *testing.T) {
 
 func TestOrOrParallel(t *testing.T) {
 	c := engine.NewOrOr(
-		engine.NewRequestComposition(topicBadTwo),
+		engine.NewRequest(topicBadTwo),
 		engine.NewParallel(
-			engine.NewRequestComposition(topicOne),
-			engine.NewRequestComposition(topicTwo),
-			engine.NewRequestComposition(topicThree),
+			engine.NewRequest(topicOne),
+			engine.NewRequest(topicTwo),
+			engine.NewRequest(topicThree),
 		),
-		engine.NewRequestComposition(topicOne),
+		engine.NewRequest(topicOne),
 	)
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
-	if cap(f) != 1 {
-		t.Error("Must only capture 1 output.")
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
+	}
+
+	if resp.Cap() != 3 {
+		t.Error("Must return 3 outputs.")
+		return
 	}
 
 	out := []*Message{}
-	(<-f).GetData(&out)
+	for msg := resp.Next(); msg != nil; msg = resp.Next() {
+		out = append(out, msg)
+	}
 
 	if len(out) != 3 {
 		t.Error("Parallel should have captured 3 outputs.")
+		return
 	}
 
 	expected := StrMap{}
@@ -428,30 +514,37 @@ func TestOrOrParallel(t *testing.T) {
 
 	if _, ok := expected["input"]; !ok {
 		t.Error("Must have key: input in final output")
+		return
 	}
 }
 
 func TestParallelParallel(t *testing.T) {
 	c := engine.NewParallel(
 		engine.NewParallel(
-			engine.NewRequestComposition(topicOne).With(StrMap{"1a": 1}),
-			engine.NewRequestComposition(topicTwo).With(StrMap{"2a": 1}),
-			engine.NewRequestComposition(topicThree).With(StrMap{"3a": 1}),
+			engine.NewRequest(topicOne).With(StrMap{"1a": 1}),
+			engine.NewRequest(topicTwo).With(StrMap{"2a": 1}),
+			engine.NewRequest(topicThree).With(StrMap{"3a": 1}),
 		),
 		engine.NewParallel(
-			engine.NewRequestComposition(topicOne).With(StrMap{"1b": 1}),
-			engine.NewRequestComposition(topicTwo).With(StrMap{"2b": 1}),
-			engine.NewRequestComposition(topicThree).With(StrMap{"3b": 1}),
+			engine.NewRequest(topicOne).With(StrMap{"1b": 1}),
+			engine.NewRequest(topicTwo).With(StrMap{"2b": 1}),
+			engine.NewRequest(topicThree).With(StrMap{"3b": 1}),
 		),
 	)
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
-	if cap(f) != 2 {
-		t.Error("Must capture 2 outputs.")
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
 	}
 
-	for msg := range f {
-		out := []*Message{}
+	if resp.Cap() != 2 {
+		t.Error("Must capture 2 outputs.")
+		return
+	}
+
+	for msg := resp.Next(); msg != nil; msg = resp.Next() {
+		out := []StrMap{}
 		msg.GetData(&out)
 
 		if len(out) != 3 {
@@ -459,9 +552,7 @@ func TestParallelParallel(t *testing.T) {
 		}
 
 		for _, x := range out {
-			data := StrMap{}
-			x.GetData(&data)
-			if _, ok := data["input"]; !ok {
+			if _, ok := x["input"]; !ok {
 				t.Error("Must have key: input in final output")
 			}
 		}
@@ -470,21 +561,29 @@ func TestParallelParallel(t *testing.T) {
 
 func TestAndAndParallel(t *testing.T) {
 	c := engine.NewAndAnd(
-		engine.NewRequestComposition(topicOne),
+		engine.NewRequest(topicOne),
 		engine.NewParallel(
-			engine.NewRequestComposition(topicOne).With(StrMap{"merge-one": 1}),
-			engine.NewRequestComposition(topicTwo).With(StrMap{"merge-two": 1}),
-			engine.NewRequestComposition(topicThree).With(StrMap{"merge-three": 1}),
+			engine.NewRequest(topicOne).With(StrMap{"merge-one": 1}),
+			engine.NewRequest(topicTwo).With(StrMap{"merge-two": 1}),
+			engine.NewRequest(topicThree).With(StrMap{"merge-three": 1}),
 		),
 	)
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
-	if cap(f) != 1 {
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
+	}
+
+	if resp.Cap() != 3 {
 		t.Error("Must capture only 1 output.")
+		return
 	}
 
 	out := []*Message{}
-	(<-f).GetData(&out)
+	for msg := resp.Next(); msg != nil; msg = resp.Next() {
+		out = append(out, msg)
+	}
 
 	if len(out) != 3 {
 		t.Error("Must have captured 3 outputs.")
@@ -500,21 +599,28 @@ func TestAndAndParallel(t *testing.T) {
 
 func TestPipeParallel(t *testing.T) {
 	c := engine.NewPipe(
-		engine.NewRequestComposition(topicOne),
+		engine.NewRequest(topicOne),
 		engine.NewParallel(
-			engine.NewRequestComposition(topicOne),
-			engine.NewRequestComposition(topicTwo),
-			engine.NewRequestComposition(topicThree),
+			engine.NewRequest(topicOne),
+			engine.NewRequest(topicTwo),
+			engine.NewRequest(topicThree),
 		),
 	)
 
-	f := c.Execute(makeMessage(StrMap{"input": 1}))
-	if cap(f) != 1 {
-		t.Error("Must capture only 1 output.")
+	resp, err := c.Execute(makeMessage(StrMap{"input": 1}))
+	if err != nil {
+		t.Error("Should not have raised Error")
+		return
+	}
+
+	if resp.Cap() != 3 {
+		t.Error("Must capture 3 outputs.")
 	}
 
 	out := []*Message{}
-	(<-f).GetData(&out)
+	for msg := resp.Next(); msg != nil; msg = resp.Next() {
+		out = append(out, msg)
+	}
 
 	if len(out) != 3 {
 		t.Error("Must have captured 3 outputs.")
