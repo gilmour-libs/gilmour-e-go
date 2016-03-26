@@ -10,7 +10,7 @@ func (r *Request) Sender() string {
 }
 
 func (r *Request) RawData() interface{} {
-	return r.gData.Data
+	return r.gData.rawData()
 }
 
 func (r *Request) Data(t interface{}) error {
@@ -72,7 +72,7 @@ func (rc *RequestComposer) With(t interface{}) *RequestComposer {
 
 func (rc *RequestComposer) Execute(m *Message) (*Response, error) {
 	if rc.message != nil {
-		if err := compositionMerge(&m.Data, &rc.message); err != nil {
+		if err := compositionMerge(m.rawData(), &rc.message); err != nil {
 			return nil, err
 		}
 	}

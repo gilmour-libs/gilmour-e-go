@@ -37,7 +37,7 @@ func inflateResponse(r *Response) *Response {
 
 	i := 0
 	for x := r.Next(); x != nil; x = r.Next() {
-		output[i] = x.Data
+		output[i] = x.rawData()
 		i++
 	}
 
