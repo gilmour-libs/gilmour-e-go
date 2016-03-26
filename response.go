@@ -50,8 +50,9 @@ func (r *Response) write(m *Message) error {
 		return errors.New("Response buffer overflow")
 	}
 
-	if r.code < m.Code {
-		r.code = m.Code
+	code := m.GetCode()
+	if r.code < code {
+		r.code = code
 	}
 
 	r.sent++

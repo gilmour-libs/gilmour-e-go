@@ -5,10 +5,16 @@ import (
 	"sync"
 )
 
-type Message struct {
+type pubMsg struct {
 	Data   interface{} `json:"data"`
 	Code   int         `json:"code"`
 	Sender string      `json:"sender"`
+}
+
+type Message struct {
+	data   interface{}
+	code   int
+	sender string
 	sync.RWMutex
 }
 
@@ -16,19 +22,26 @@ func (m *Message) bytes() ([]byte, error) {
 	m.RLock()
 	defer m.RUnlock()
 
-	return json.Marshal(m.Data)
+	return json.Marshal(m.data)
 }
 
 func (m *Message) SetData(data interface{}) *Message {
 	m.Lock()
 	defer m.Unlock()
 
-	if m.Data != nil {
+	if m.data != nil {
 		panic("Cannot rewrite data for Message.")
 	}
 
-	m.Data = data
+	m.data = data
 	return m
+}
+
+func (m *Message) rawData() interface{} {
+	m.RLock()
+	defer m.RUnlock()
+
+	return m.data
 }
 
 func (m *Message) GetData(t interface{}) error {
@@ -46,14 +59,14 @@ func (m *Message) GetCode() int {
 	m.RLock()
 	defer m.RUnlock()
 
-	return m.Code
+	return m.code
 }
 
 func (m *Message) SetCode(code int) *Message {
 	m.Lock()
 	defer m.Unlock()
 
-	m.Code = code
+	m.code = code
 	return m
 }
 
@@ -61,14 +74,14 @@ func (m *Message) GetSender() string {
 	m.RLock()
 	defer m.RUnlock()
 
-	return m.Sender
+	return m.sender
 }
 
 func (m *Message) setSender(sender string) *Message {
 	m.Lock()
 	defer m.Unlock()
 
-	m.Sender = sender
+	m.sender = sender
 	return m
 }
 
@@ -76,7 +89,7 @@ func (m *Message) Marshal() ([]byte, error) {
 	m.RLock()
 	defer m.RUnlock()
 
-	return json.Marshal(m)
+	return json.Marshal(pubMsg{m.data, m.code, m.sender})
 }
 
 func parseMessage(data interface{}) (resp *Message, err error) {
@@ -91,11 +104,11 @@ func parseMessage(data interface{}) (resp *Message, err error) {
 		msg = t
 	}
 
-	//resp := new(Message)
-	err = json.Unmarshal(msg, &resp)
-	//if err == nil {
-	//	resp = &Message{data: _msg.Data, code: _msg.Code, sender: _msg.Sender}
-	//}
+	_msg := new(pubMsg)
+	err = json.Unmarshal(msg, _msg)
+	if err == nil {
+		resp = &Message{data: _msg.Data, code: _msg.Code, sender: _msg.Sender}
+	}
 
 	return
 }
