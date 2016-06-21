@@ -88,29 +88,29 @@ func (r *Redis) getErrorQueue() string {
 }
 
 func (r *Redis) ReportError(method string, message protocol.Error) (err error) {
-	// conn := r.getPubSub()
+	pipeline := r.getClient().Pipeline()
+	defer pipeline.Close()
 
-	// switch method {
-	// case protocol.ErrorPolicyPublish:
-	//  err = r.Publish(protocol.ErrorTopic, message)
+	switch method {
+	case protocol.ErrorPolicyPublish:
+		err = r.Publish(protocol.ErrorTopic, message)
 
-	// case protocol.ErrorPolicyQueue:
-	//  msg, merr := message.Marshal()
-	//  if merr != nil {
-	//    err = merr
-	//    return
-	//  }
+	case protocol.ErrorPolicyQueue:
+		msg, merr := message.Marshal()
+		if merr != nil {
+			err = merr
+			return
+		}
 
-	//  queue := r.getErrorQueue()
-	//  // conn.Send("LPUSH", queue, string(msg))
-	//  // conn.Send("LTRIM", queue, 0, defaultErrorBuffer)
+		queue := r.getErrorQueue()
+		pipeline.LPush(queue, string(msg))
+		pipeline.LTrim(queue, 0, defaultErrorBuffer)
 
-	//  _, err = conn.Receive()
+		_, err = pipeline.Exec()
 
-	// }
+	}
 
-	// return err
-	return
+	return err
 }
 
 func (r *Redis) Unsubscribe(topic string) (err error) {
