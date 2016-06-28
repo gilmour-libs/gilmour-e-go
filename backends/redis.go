@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
-	"gopkg.in/redis.v3"
+	"gopkg.in/redis.v4"
 )
 
 const defaultErrorQueue = "gilmour.errorqueue"
@@ -172,7 +172,7 @@ func (r *Redis) Publish(topic string, message interface{}) (err error) {
 func (r *Redis) ActiveIdents() (map[string]string, error) {
 	client := r.getClient()
 
-	return client.HGetAllMap(r.getHealthIdent()).Result()
+	return client.HGetAll(r.getHealthIdent()).Result()
 }
 
 func (r *Redis) RegisterIdent(uuid string) error {
@@ -201,11 +201,13 @@ func (r *Redis) setupListeners(sink chan<- *protocol.Message) {
 		for {
 			resp, _ := r.getPubSub().Receive()
 			switch v := resp.(type) {
-			case *redis.PMessage:
-				msg := &protocol.Message{"pmessage", v.Channel, v.Payload, v.Pattern}
-				sink <- msg
 			case *redis.Message:
-				msg := &protocol.Message{"message", v.Channel, v.Payload, v.Channel}
+				var msg *protocol.Message
+				if v.Pattern == "" {
+					msg = &protocol.Message{"message", v.Channel, v.Payload, v.Channel}
+				} else {
+					msg = &protocol.Message{"pmessage", v.Channel, v.Payload, v.Pattern}
+				}
 				sink <- msg
 			case *redis.Subscription:
 				//log.Println("PubSub event", "Channel", v.Channel, "Kind", v.Kind, "Count", v.Count)
