@@ -5,9 +5,10 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/garyburd/redigo/redis"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
+	"gopkg.in/redis.v3"
 )
 
 const defaultErrorQueue = "gilmour.errorqueue"
@@ -15,32 +16,33 @@ const defaultIdentKey = "gilmour.known_host.health"
 const defaultErrorBuffer = 9999
 
 func MakeRedis(host, password string) *Redis {
-	redisPool := getPool(host, password)
+	client := getClient(host, password)
 	return &Redis{
-		redisPool:  redisPool,
-		pubsubConn: redis.PubSubConn{Conn: redisPool.Get()},
+		client: client,
+		pubsub: client.PubSub(),
 	}
 }
 
 type Redis struct {
-	redisPool  *redis.Pool
-	pubsubConn redis.PubSubConn
+	client *redis.Client
+	pubsub *redis.PubSub
 	sync.Mutex
 }
 
-func (r *Redis) getPubSubConn() redis.PubSubConn {
-	return r.pubsubConn
+func (r *Redis) getClient() *redis.Client {
+	return r.client
 }
 
-func (r *Redis) getConn() redis.Conn {
-	return r.redisPool.Get()
+func (r *Redis) getPubSub() *redis.PubSub {
+	return r.pubsub
 }
 
 func (r *Redis) IsTopicSubscribed(topic string) (bool, error) {
-	conn := r.getConn()
-	defer conn.Close()
+	client := r.getClient()
 
-	idents, err2 := redis.Strings(conn.Do("PUBSUB", "CHANNELS"))
+	response := client.PubSubChannels(topic)
+
+	idents, err2 := response.Result()
 	if err2 != nil {
 		log.Println(err2.Error())
 		return false, err2
@@ -56,10 +58,10 @@ func (r *Redis) IsTopicSubscribed(topic string) (bool, error) {
 }
 
 func (r *Redis) HasActiveSubscribers(topic string) (bool, error) {
-	conn := r.getConn()
-	defer conn.Close()
+	client := r.getClient()
 
-	data, err := redis.IntMap(conn.Do("PUBSUB", "NUMSUB", topic))
+	response := client.PubSubNumSub(topic)
+	data, err := response.Result()
 	if err == nil {
 		count, has := data[topic]
 		return has && count > 0, err
@@ -69,21 +71,16 @@ func (r *Redis) HasActiveSubscribers(topic string) (bool, error) {
 }
 
 func (r *Redis) AcquireGroupLock(group, sender string) bool {
-	conn := r.getConn()
-	defer conn.Close()
+	client := r.getClient()
 
 	key := sender + group
 
-	val, err := conn.Do("SET", key, key, "NX", "EX", "600")
+	val, err := client.SetNX(key, key, 600*time.Second).Result()
 	if err != nil {
 		return false
 	}
 
-	if val == nil {
-		return false
-	}
-
-	return true
+	return val
 }
 
 func (r *Redis) getErrorQueue() string {
@@ -91,8 +88,8 @@ func (r *Redis) getErrorQueue() string {
 }
 
 func (r *Redis) ReportError(method string, message protocol.Error) (err error) {
-	conn := r.getConn()
-	defer conn.Close()
+	pipeline := r.getClient().Pipeline()
+	defer pipeline.Close()
 
 	switch method {
 	case protocol.ErrorPolicyPublish:
@@ -106,10 +103,10 @@ func (r *Redis) ReportError(method string, message protocol.Error) (err error) {
 		}
 
 		queue := r.getErrorQueue()
-		conn.Send("LPUSH", queue, string(msg))
-		conn.Send("LTRIM", queue, 0, defaultErrorBuffer)
+		pipeline.LPush(queue, string(msg))
+		pipeline.LTrim(queue, 0, defaultErrorBuffer)
 
-		_, err = conn.Receive()
+		_, err = pipeline.Exec()
 
 	}
 
@@ -121,12 +118,12 @@ func (r *Redis) Unsubscribe(topic string) (err error) {
 	defer r.Unlock()
 
 	if strings.HasSuffix(topic, "*") {
-		err = r.getPubSubConn().PUnsubscribe(topic)
+		err = r.getPubSub().PUnsubscribe(topic)
 	} else {
-		err = r.getPubSubConn().Unsubscribe(topic)
+		err = r.getPubSub().Unsubscribe(topic)
 	}
 
-	return
+	return err
 }
 
 func (r *Redis) Subscribe(topic, group string) (err error) {
@@ -134,12 +131,12 @@ func (r *Redis) Subscribe(topic, group string) (err error) {
 	defer r.Unlock()
 
 	if strings.HasSuffix(topic, "*") {
-		err = r.getPubSubConn().PSubscribe(topic)
+		err = r.getPubSub().PSubscribe(topic)
 	} else {
-		err = r.getPubSubConn().Subscribe(topic)
+		err = r.getPubSub().Subscribe(topic)
 	}
 
-	return
+	return err
 }
 
 func (r *Redis) getHealthIdent() string {
@@ -166,33 +163,29 @@ func (r *Redis) Publish(topic string, message interface{}) (err error) {
 		return
 	}
 
-	conn := r.getConn()
-	defer conn.Close()
+	client := r.getClient()
 
-	_, err = conn.Do("PUBLISH", topic, msg)
+	_, err = client.Publish(topic, msg).Result()
 	return
 }
 
 func (r *Redis) ActiveIdents() (map[string]string, error) {
-	conn := r.getConn()
-	defer conn.Close()
+	client := r.getClient()
 
-	return redis.StringMap(conn.Do("HGETALL", r.getHealthIdent()))
+	return client.HGetAllMap(r.getHealthIdent()).Result()
 }
 
 func (r *Redis) RegisterIdent(uuid string) error {
-	conn := r.getConn()
-	defer conn.Close()
+	client := r.getClient()
 
-	_, err := conn.Do("HSET", r.getHealthIdent(), uuid, "true")
+	_, err := client.HSet(r.getHealthIdent(), uuid, "true").Result()
 	return err
 }
 
 func (r *Redis) UnregisterIdent(uuid string) error {
-	conn := r.getConn()
-	defer conn.Close()
+	client := r.getClient()
 
-	_, err := conn.Do("HDEL", r.getHealthIdent(), uuid)
+	_, err := client.HDel(r.getHealthIdent(), uuid).Result()
 	return err
 }
 
@@ -206,16 +199,17 @@ func (r *Redis) Stop() {
 func (r *Redis) setupListeners(sink chan<- *protocol.Message) {
 	go func() {
 		for {
-			switch v := r.getPubSubConn().Receive().(type) {
-			case redis.PMessage:
-				msg := &protocol.Message{"pmessage", v.Channel, v.Data, v.Pattern}
+			resp, _ := r.getPubSub().Receive()
+			switch v := resp.(type) {
+			case *redis.PMessage:
+				msg := &protocol.Message{"pmessage", v.Channel, v.Payload, v.Pattern}
 				sink <- msg
-			case redis.Message:
-				msg := &protocol.Message{"message", v.Channel, v.Data, v.Channel}
+			case *redis.Message:
+				msg := &protocol.Message{"message", v.Channel, v.Payload, v.Channel}
 				sink <- msg
-			case redis.Subscription:
+			case *redis.Subscription:
 				//log.Println("PubSub event", "Channel", v.Channel, "Kind", v.Kind, "Count", v.Count)
-			case redis.Pong:
+			case *redis.Pong:
 				//log.Println("Pong", "Data", v.Data)
 			case error:
 				log.Println("Error", "message", v.Error())
