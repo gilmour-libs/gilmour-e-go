@@ -23,6 +23,14 @@ func MakeRedis(host, password string) *Redis {
 	}
 }
 
+func MakeRedisSentinel(master, password string, sentinels []string) *Redis {
+	client := getFailoverClient(master, password, sentinels)
+	return &Redis{
+		client: client,
+		pubsub: client.PubSub(),
+	}
+}
+
 type Redis struct {
 	client *redis.Client
 	pubsub *redis.PubSub

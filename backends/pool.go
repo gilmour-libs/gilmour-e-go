@@ -25,14 +25,35 @@ func newClient(server, password string) *redis.Client {
 	return redis.NewClient(options)
 }
 
-var cached = struct {
-	client *redis.Client
-}{}
+func newFailoverClient(master, password string, sentinels []string) *redis.Client {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	options := &redis.FailoverOptions{
+		MasterName:    master,
+		SentinelAddrs: sentinels,
+		Password:      password,
+		DB:            0,
+		PoolSize:      1000,
+		IdleTimeout:   240 * time.Second,
+	}
+
+	return redis.NewFailoverClient(options)
+}
+
+var cachedClient, cachedFailoverClient *redis.Client
 
 func getClient(redis_host, password string) *redis.Client {
 	once.Do(func() {
-		cached.client = newClient(redis_host, password)
+		cachedClient = newClient(redis_host, password)
 	})
 
-	return cached.client
+	return cachedClient
+}
+
+func getFailoverClient(master, password string, sentinels []string) *redis.Client {
+	once.Do(func() {
+		cachedFailoverClient = newFailoverClient(master, password, sentinels)
+	})
+
+	return cachedFailoverClient
 }
