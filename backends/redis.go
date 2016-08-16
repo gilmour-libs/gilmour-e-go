@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
-	// "gopkg.in/mohandutt134/redis.v5"
+	"gopkg.in/mohandutt134/redis.v4"
 )
 
 const defaultErrorQueue = "gilmour.errorqueue"
