@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/redis.v4"
+	"gopkg.in/mohandutt134/redis.v5"
 )
 
 var once sync.Once
