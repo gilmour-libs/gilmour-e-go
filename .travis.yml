@@ -7,6 +7,10 @@ services:
   - redis-server
 
 script:
+  - mkdir -p $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v4
+  - ln -s $(pwd)/ui $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v5/ui
+  - ln -s $(pwd)/proto $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v5/proto
+  - ln -s $(pwd)/backends $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v5/backends
   - go test -v --race ./...
   - go build -v --race ./...
 
