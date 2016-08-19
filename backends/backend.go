@@ -1,11 +1,7 @@
-package gilmour
-
-import (
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
-)
+package backends
 
 type Backend interface {
-	Start(chan<- *protocol.Message)
+	Start(chan<- MsgReader)
 	Stop()
 
 	HasActiveSubscribers(topic string) (bool, error)
@@ -13,7 +9,11 @@ type Backend interface {
 	Subscribe(topic, group string) error
 	Unsubscribe(topic string) error
 	Publish(topic string, msg interface{}) error
-	ReportError(method string, err protocol.Error) error
+
+	SetErrorPolicy(string) error
+	GetErrorPolicy() string
+	SupportedErrorPolicies() []string
+	ReportError(method string, err MsgWriter) error
 
 	AcquireGroupLock(group, sender string) bool
 
