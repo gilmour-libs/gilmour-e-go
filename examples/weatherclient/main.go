@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	G "gopkg.in/gilmour-libs/gilmour-e-go.v4"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
+	G "gopkg.in/gilmour-libs/gilmour-e-go.v5"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/backends"
 )
 
 type weatherTuple struct {

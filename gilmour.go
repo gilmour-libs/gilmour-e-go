@@ -8,9 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/proto"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/ui"
 )
 
 func responseTopic(sender string) string {
@@ -19,7 +18,7 @@ func responseTopic(sender string) string {
 
 //Get a working Gilmour Engine powered by the backend provided.
 //Currently, only Redis is supported as a backend.
-func Get(backend backends.Backend) *Gilmour {
+func Get(backend proto.Backend) *Gilmour {
 	x := Gilmour{}
 	x.subscriber = newSubscriptionManager()
 	x.addBackend(backend)
@@ -30,7 +29,7 @@ type Gilmour struct {
 	enableHealthCheck bool
 	identMutex        sync.RWMutex
 	subscriberMutex   sync.RWMutex
-	backend           backends.Backend
+	backend           proto.Backend
 	ident             string
 	errorPolicy       string
 	subscriber        subscriber
@@ -39,7 +38,7 @@ type Gilmour struct {
 // Start the Gilmour engine. Creates a bi-directional channel; sent to both
 // backend and startReciver
 func (g *Gilmour) Start() {
-	sink := make(chan backends.MsgReader)
+	sink := make(chan *proto.BackendPacket)
 	g.backend.Start(sink)
 	go g.startReciver(sink)
 }
@@ -60,7 +59,7 @@ func (g *Gilmour) Stop() {
 
 //Keep listening to messages on sink, spinning a new goroutine for every
 //message recieved.
-func (g *Gilmour) startReciver(sink <-chan backends.MsgReader) {
+func (g *Gilmour) startReciver(sink <-chan *proto.BackendPacket) {
 	for {
 		go g.processMessage(<-sink)
 	}
@@ -72,7 +71,7 @@ Parse a gilmour *Message and for subscribers of this topic do the following:
 	* If subscriber belongs to a group, try acquiring a lock via backend to ensure group exclusivity.
 	* If all conditions suffice spin up a new goroutine for each subscription.
 */
-func (g *Gilmour) processMessage(msg backends.MsgReader) {
+func (g *Gilmour) processMessage(msg *proto.BackendPacket) {
 	subs, ok := g.getSubscribers(msg.GetPattern())
 	if !ok || len(subs) == 0 {
 		ui.Warn("*Message cannot be processed. No subs found for key %v", msg.GetPattern())
@@ -189,7 +188,7 @@ func (g *Gilmour) sendTimeout(senderId, channel string) {
 	}
 }
 
-func (g *Gilmour) addBackend(backend backends.Backend) {
+func (g *Gilmour) addBackend(backend proto.Backend) {
 	g.backend = backend
 }
 

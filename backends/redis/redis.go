@@ -1,4 +1,4 @@
-package backends
+package redis
 
 import (
 	"errors"
@@ -6,6 +6,8 @@ import (
 	"log"
 	"strings"
 	"sync"
+
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -116,16 +118,16 @@ func (r *Redis) getErrorQueue() string {
 	return defaultErrorQueue
 }
 
-func (r *Redis) ReportError(method string, message MsgWriter) (err error) {
+func (r *Redis) ReportError(method string, message *proto.GilmourError) (err error) {
 	conn := r.getConn()
 	defer conn.Close()
 
 	switch method {
 	case errorPolicyPublish:
-		err = r.Publish(errorTopic, message)
+		err = r.Publish(errorTopic, *message)
 
 	case errorPolicyQueue:
-		msg, merr := message.Marshal()
+		msg, merr := (*message).Marshal()
 		if merr != nil {
 			err = merr
 			return
@@ -177,7 +179,7 @@ func (r *Redis) Publish(topic string, message interface{}) (err error) {
 	switch t := message.(type) {
 	case string:
 		msg = t
-	case MsgWriter:
+	case proto.BackendWriter:
 		msg2, err2 := t.Marshal()
 		if err != nil {
 			err = err2
@@ -185,7 +187,7 @@ func (r *Redis) Publish(topic string, message interface{}) (err error) {
 			msg = string(msg2)
 		}
 	default:
-		err = errors.New("Message can only be String or MsgWriter")
+		err = errors.New("Message can only be String or WireWriter")
 	}
 
 	if err != nil {
@@ -222,22 +224,22 @@ func (r *Redis) UnregisterIdent(uuid string) error {
 	return err
 }
 
-func (r *Redis) Start(sink chan<- MsgReader) {
+func (r *Redis) Start(sink chan<- *proto.BackendPacket) {
 	r.setupListeners(sink)
 }
 
 func (r *Redis) Stop() {
 }
 
-func (r *Redis) setupListeners(sink chan<- MsgReader) {
+func (r *Redis) setupListeners(sink chan<- *proto.BackendPacket) {
 	go func() {
 		for {
 			switch v := r.getPubSubConn().Receive().(type) {
 			case redis.PMessage:
-				msg := &message{"pmessage", v.Channel, v.Data, v.Pattern}
+				msg := proto.NewBackendPacket("pmessage", v.Channel, v.Pattern, v.Data)
 				sink <- msg
 			case redis.Message:
-				msg := &message{"message", v.Channel, v.Data, v.Channel}
+				msg := proto.NewBackendPacket("message", v.Channel, v.Channel, v.Data)
 				sink <- msg
 			case redis.Subscription:
 				//log.Println("PubSub event", "Channel", v.Channel, "Kind", v.Kind, "Count", v.Count)

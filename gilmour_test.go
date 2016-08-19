@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
+	r "gopkg.in/gilmour-libs/gilmour-e-go.v5/backends/redis"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/ui"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 
 var engine *Gilmour
 
-var redis = backends.MakeRedis("127.0.0.1:6379", "")
+var redis = r.MakeRedis("127.0.0.1:6379", "")
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 

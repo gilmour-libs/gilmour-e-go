@@ -1,7 +1,7 @@
-package backends
+package proto
 
 type Backend interface {
-	Start(chan<- MsgReader)
+	Start(chan<- *BackendPacket)
 	Stop()
 
 	HasActiveSubscribers(topic string) (bool, error)
@@ -13,7 +13,7 @@ type Backend interface {
 	SetErrorPolicy(string) error
 	GetErrorPolicy() string
 	SupportedErrorPolicies() []string
-	ReportError(method string, err MsgWriter) error
+	ReportError(method string, err *GilmourError) error
 
 	AcquireGroupLock(group, sender string) bool
 

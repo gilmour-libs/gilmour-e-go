@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/proto"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
 )
 
 type pubMsg struct {
