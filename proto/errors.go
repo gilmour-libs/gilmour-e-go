@@ -1,11 +1,11 @@
-package gilmour
+package proto
 
 import (
 	"encoding/json"
 	"time"
 )
 
-type gilmourError struct {
+type GilmourError struct {
 	topic        string
 	requestData  string
 	userData     string
@@ -16,19 +16,19 @@ type gilmourError struct {
 	code         int
 }
 
-func (self *gilmourError) getTopic() string {
+func (self *GilmourError) GetTopic() string {
 	return self.topic
 }
 
-func (self *gilmourError) getSender() string {
+func (self *GilmourError) GetSender() string {
 	return self.sender
 }
 
-func (self *gilmourError) getCode() int {
+func (self *GilmourError) GetCode() int {
 	return self.code
 }
 
-func (self *gilmourError) Marshal() ([]byte, error) {
+func (self *GilmourError) Marshal() ([]byte, error) {
 	eStruct := struct {
 		Topic        string      `json:"topic"`
 		RequestData  string      `json:"request_data"`
@@ -45,12 +45,12 @@ func (self *gilmourError) Marshal() ([]byte, error) {
 	return json.Marshal(eStruct)
 }
 
-func makeError(
+func MakeError(
 	code int,
 	sender, topic, requestData, userData, backtrace string,
-) *gilmourError {
+) *GilmourError {
 
-	return &gilmourError{
+	return &GilmourError{
 		code:        code,
 		topic:       topic,
 		requestData: requestData,

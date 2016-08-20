@@ -3,6 +3,8 @@ package gilmour
 import (
 	"encoding/json"
 	"sync"
+
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
 )
 
 type pubMsg struct {
@@ -18,7 +20,7 @@ type Message struct {
 	sync.RWMutex
 }
 
-func (m *Message) bytes() ([]byte, error) {
+func (m *Message) Bytes() ([]byte, error) {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -48,7 +50,7 @@ func (m *Message) GetData(t interface{}) error {
 	m.RLock()
 	defer m.RUnlock()
 
-	if byts, err := m.bytes(); err != nil {
+	if byts, err := m.Bytes(); err != nil {
 		return err
 	} else {
 		return json.Unmarshal(byts, t)
@@ -92,7 +94,14 @@ func (m *Message) Marshal() ([]byte, error) {
 	return json.Marshal(pubMsg{m.data, m.code, m.sender})
 }
 
-func parseMessage(data interface{}) (resp *Message, err error) {
+func parseMessage(data interface{}) (*Message, error) {
+	resp := &Message{}
+	var err error
+
+	if data == nil {
+		return resp, err
+	}
+
 	var msg []byte
 
 	switch t := data.(type) {
@@ -110,11 +119,11 @@ func parseMessage(data interface{}) (resp *Message, err error) {
 		resp = &Message{data: _msg.Data, code: _msg.Code, sender: _msg.Sender}
 	}
 
-	return
+	return resp, err
 }
 
 func NewMessage() *Message {
 	x := &Message{}
-	x.setSender(makeSenderId())
+	x.setSender(proto.SenderId())
 	return x
 }

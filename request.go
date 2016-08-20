@@ -26,7 +26,7 @@ func (r *Request) Code() int {
 }
 
 func (r *Request) bytes() []byte {
-	byt, _ := r.gData.bytes()
+	byt, _ := r.gData.Bytes()
 	return byt
 }
 

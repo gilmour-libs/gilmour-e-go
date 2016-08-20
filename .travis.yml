@@ -6,10 +6,11 @@ go:
 services:
   - redis-server
 
+before_install:
+  - mkdir -p $GOPATH/src/gopkg.in/gilmour-libs
+  - ln -s $(pwd) $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v5
+
 script:
-  - mkdir -p $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v4
-  - ln -s $(pwd)/backends $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v4/backends
-  - ln -s $(pwd)/ui $GOPATH/src/gopkg.in/gilmour-libs/gilmour-e-go.v4/ui
   - go test -v --race ./...
   - go build -v --race ./...
 
