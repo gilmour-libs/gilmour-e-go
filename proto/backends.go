@@ -1,7 +1,7 @@
 package proto
 
 type Backend interface {
-	Start(chan<- *BackendPacket)
+	Start(chan<- *Packet)
 	Stop()
 
 	HasActiveSubscribers(topic string) (bool, error)

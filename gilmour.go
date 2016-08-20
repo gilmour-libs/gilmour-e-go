@@ -38,7 +38,7 @@ type Gilmour struct {
 // Start the Gilmour engine. Creates a bi-directional channel; sent to both
 // backend and startReciver
 func (g *Gilmour) Start() {
-	sink := make(chan *proto.BackendPacket)
+	sink := make(chan *proto.Packet)
 	g.backend.Start(sink)
 	go g.startReciver(sink)
 }
@@ -59,7 +59,7 @@ func (g *Gilmour) Stop() {
 
 //Keep listening to messages on sink, spinning a new goroutine for every
 //message recieved.
-func (g *Gilmour) startReciver(sink <-chan *proto.BackendPacket) {
+func (g *Gilmour) startReciver(sink <-chan *proto.Packet) {
 	for {
 		go g.processMessage(<-sink)
 	}
@@ -71,7 +71,7 @@ Parse a gilmour *Message and for subscribers of this topic do the following:
 	* If subscriber belongs to a group, try acquiring a lock via backend to ensure group exclusivity.
 	* If all conditions suffice spin up a new goroutine for each subscription.
 */
-func (g *Gilmour) processMessage(msg *proto.BackendPacket) {
+func (g *Gilmour) processMessage(msg *proto.Packet) {
 	subs, ok := g.getSubscribers(msg.GetPattern())
 	if !ok || len(subs) == 0 {
 		ui.Warn("*Message cannot be processed. No subs found for key %v", msg.GetPattern())

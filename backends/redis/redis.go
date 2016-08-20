@@ -224,22 +224,22 @@ func (r *Redis) UnregisterIdent(uuid string) error {
 	return err
 }
 
-func (r *Redis) Start(sink chan<- *proto.BackendPacket) {
+func (r *Redis) Start(sink chan<- *proto.Packet) {
 	r.setupListeners(sink)
 }
 
 func (r *Redis) Stop() {
 }
 
-func (r *Redis) setupListeners(sink chan<- *proto.BackendPacket) {
+func (r *Redis) setupListeners(sink chan<- *proto.Packet) {
 	go func() {
 		for {
 			switch v := r.getPubSubConn().Receive().(type) {
 			case redis.PMessage:
-				msg := proto.NewBackendPacket("pmessage", v.Channel, v.Pattern, v.Data)
+				msg := proto.NewPacket("pmessage", v.Channel, v.Pattern, v.Data)
 				sink <- msg
 			case redis.Message:
-				msg := proto.NewBackendPacket("message", v.Channel, v.Channel, v.Data)
+				msg := proto.NewPacket("message", v.Channel, v.Channel, v.Data)
 				sink <- msg
 			case redis.Subscription:
 				//log.Println("PubSub event", "Channel", v.Channel, "Kind", v.Kind, "Count", v.Count)
