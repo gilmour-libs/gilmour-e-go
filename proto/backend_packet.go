@@ -1,9 +1,5 @@
 package proto
 
-type BackendWriter interface {
-	Marshal() ([]byte, error)
-}
-
 type Packet struct {
 	msg_type string
 	topic    string

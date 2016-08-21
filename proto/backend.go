@@ -1,5 +1,9 @@
 package proto
 
+type BackendWriter interface {
+	Marshal() ([]byte, error)
+}
+
 type Backend interface {
 	Start(chan<- *Packet)
 	Stop()
