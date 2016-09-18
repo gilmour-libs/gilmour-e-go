@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	defaultErrorQueue  = "gilmour.errorqueue"
 	defaultErrorBuffer = 9999
 	errorPolicyQueue   = "queue"
 	errorPolicyPublish = "publish"
@@ -113,7 +112,7 @@ func (r *Redis) AcquireGroupLock(group, sender string) bool {
 }
 
 func (r *Redis) getErrorQueue() string {
-	return defaultErrorQueue
+	return proto.ErrorQueue()
 }
 
 func (r *Redis) ReportError(method string, message *proto.GilmourError) (err error) {

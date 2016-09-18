@@ -25,3 +25,7 @@ func SlotTopic(topic string) string {
 func ErrorTopic() string {
 	return "gilmour.errors"
 }
+
+func ErrorQueue() string {
+	return "gilmour.errorqueue"
+}
