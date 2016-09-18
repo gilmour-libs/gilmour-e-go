@@ -4,8 +4,8 @@ import "testing"
 
 func TestResponseBufferOverflow(t *testing.T) {
 	x := newResponse(1)
-	x.write(&Message{})
-	err := x.write(&Message{})
+	x.write(NewMessage())
+	err := x.write(NewMessage())
 	if err == nil {
 		t.Error("Should complain about buffer overflow")
 	}
@@ -13,9 +13,9 @@ func TestResponseBufferOverflow(t *testing.T) {
 
 func TestResponseNext(t *testing.T) {
 	x := newResponse(2)
-	x.write(&Message{})
+	x.write(NewMessage())
 
-	err := x.write(&Message{})
+	err := x.write(NewMessage())
 	if err != nil {
 		t.Error("Should allow write twice")
 	}

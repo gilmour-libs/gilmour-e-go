@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	G "gopkg.in/gilmour-libs/gilmour-e-go.v4"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
+	G "gopkg.in/gilmour-libs/gilmour-e-go.v5"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/backends/redis"
 )
 
 type weatherTuple struct {
@@ -15,8 +15,8 @@ type weatherTuple struct {
 }
 
 func echoEngine() *G.Gilmour {
-	redis := backends.MakeRedis("127.0.0.1:6379", "")
-	engine := G.Get(redis)
+	r := redis.MakeRedis("127.0.0.1:6379", "")
+	engine := G.Get(r)
 	return engine
 }
 

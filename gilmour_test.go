@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/backends"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
+	r "gopkg.in/gilmour-libs/gilmour-e-go.v5/backends/redis"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/ui"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 
 var engine *Gilmour
 
-var redis = backends.MakeRedis("127.0.0.1:6379", "")
+var redis = r.MakeRedis("127.0.0.1:6379", "")
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
@@ -306,7 +306,7 @@ func TestSignalSlotStruct(t *testing.T) {
 			t.Error("Should have received 3 strings in data")
 		}
 	case <-time.After(time.Second * 2):
-		t.Error("Message should be twice, timed out instead")
+		t.Error("*Message should be twice, timed out instead")
 	}
 }
 
@@ -341,7 +341,7 @@ func TestSignalSlotStructFailed(t *testing.T) {
 			t.Error("Should not have received any string in data")
 		}
 	case <-time.After(time.Second * 2):
-		t.Error("Message should be twice, timed out instead")
+		t.Error("*Message should be twice, timed out instead")
 	}
 
 	engine.UnsubscribeSlot(topic, sub)
@@ -393,13 +393,13 @@ func TestSendOnceReceiveTwice(t *testing.T) {
 		case result := <-out_chan:
 			out = append(out, result)
 		case <-time.After(time.Second * 2):
-			t.Error("Message should be twice, timed out instead")
+			t.Error("*Message should be twice, timed out instead")
 		}
 	}
 
 	// Results should be received twice.
 	if len(out) != count {
-		t.Error("Message should be returned ", count, "items. Found", out)
+		t.Error("*Message should be returned ", count, "items. Found", out)
 	}
 }
 
@@ -427,10 +427,10 @@ func TestHealthResponse(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "healthy" {
-			t.Error("Message should be healthy. Found", result)
+			t.Error("*Message should be healthy. Found", result)
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Message should be", PingResponse, "timed out instead")
+		t.Error("*Message should be", PingResponse, "timed out instead")
 	}
 }
 
@@ -455,7 +455,7 @@ func TestReceiveOnWildcard(t *testing.T) {
 	case <-out_chan:
 		// True Case.
 	case <-time.After(time.Second * 2):
-		t.Error("Message should be received, timed out instead")
+		t.Error("*Message should be received, timed out instead")
 	}
 
 	// cleanup. Unsubscribe from all subscribed channels.
@@ -486,10 +486,10 @@ func TestSendAndReceive(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != PingResponse {
-			t.Error("Message should be", PingResponse, "Found", result)
+			t.Error("*Message should be", PingResponse, "Found", result)
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Message should be", PingResponse, "timed out instead")
+		t.Error("*Message should be", PingResponse, "timed out instead")
 	}
 }
 
@@ -515,10 +515,10 @@ func TestPublisherTimeout(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "Execution timed out" {
-			t.Error("Message should be 'Execution timed out' Found", result)
+			t.Error("*Message should be 'Execution timed out' Found", result)
 		}
 	case <-time.After(time.Second * time.Duration(sleepFor)):
-		t.Error("Message should be", "Execution timed out", "timed out instead")
+		t.Error("*Message should be", "Execution timed out", "timed out instead")
 	}
 }
 
@@ -570,10 +570,10 @@ func TestSubscriberTimeout(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != "Execution timed out" {
-			t.Error("Message should be Execution timed out. Found", result)
+			t.Error("*Message should be Execution timed out. Found", result)
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Message should be", PingResponse, "timed out instead")
+		t.Error("*Message should be", PingResponse, "timed out instead")
 	}
 
 	engine.UnsubscribeReply(topic, sub)
@@ -607,10 +607,10 @@ func TestHandlerException(t *testing.T) {
 	select {
 	case result := <-out_chan:
 		if result != 500 {
-			t.Error("Message should raise exception")
+			t.Error("*Message should raise exception")
 		}
 	case <-time.After(time.Second * 5):
-		t.Error("Message should have raised Exception, timed out instead")
+		t.Error("*Message should have raised Exception, timed out instead")
 	}
 
 	engine.UnsubscribeReply(topic, sub)

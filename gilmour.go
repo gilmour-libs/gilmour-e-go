@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/protocol"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v4/ui"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/ui"
 )
 
 func responseTopic(sender string) string {
@@ -18,7 +18,7 @@ func responseTopic(sender string) string {
 
 //Get a working Gilmour Engine powered by the backend provided.
 //Currently, only Redis is supported as a backend.
-func Get(backend Backend) *Gilmour {
+func Get(backend proto.Backend) *Gilmour {
 	x := Gilmour{}
 	x.subscriber = newSubscriptionManager()
 	x.addBackend(backend)
@@ -29,7 +29,7 @@ type Gilmour struct {
 	enableHealthCheck bool
 	identMutex        sync.RWMutex
 	subscriberMutex   sync.RWMutex
-	backend           Backend
+	backend           proto.Backend
 	ident             string
 	errorPolicy       string
 	subscriber        subscriber
@@ -38,7 +38,7 @@ type Gilmour struct {
 // Start the Gilmour engine. Creates a bi-directional channel; sent to both
 // backend and startReciver
 func (g *Gilmour) Start() {
-	sink := make(chan *protocol.Message)
+	sink := make(chan *proto.Packet)
 	g.backend.Start(sink)
 	go g.startReciver(sink)
 }
@@ -59,27 +59,26 @@ func (g *Gilmour) Stop() {
 
 //Keep listening to messages on sink, spinning a new goroutine for every
 //message recieved.
-func (g *Gilmour) startReciver(sink <-chan *protocol.Message) {
+func (g *Gilmour) startReciver(sink <-chan *proto.Packet) {
 	for {
-		msg := <-sink
-		go g.processMessage(msg)
+		go g.processMessage(<-sink)
 	}
 }
 
 /*
-Parse a gilmour Message and for subscribers of this topic do the following:
+Parse a gilmour *Message and for subscribers of this topic do the following:
 	* If subscriber is one shot, unsubscribe the subscriber to prevent subscribers from re-execution.
 	* If subscriber belongs to a group, try acquiring a lock via backend to ensure group exclusivity.
 	* If all conditions suffice spin up a new goroutine for each subscription.
 */
-func (g *Gilmour) processMessage(msg *protocol.Message) {
-	subs, ok := g.getSubscribers(msg.Key)
+func (g *Gilmour) processMessage(msg *proto.Packet) {
+	subs, ok := g.getSubscribers(msg.GetPattern())
 	if !ok || len(subs) == 0 {
-		ui.Warn("Message cannot be processed. No subs found for key %v", msg.Key)
+		ui.Warn("*Message cannot be processed. No subs found for key %v", msg.GetPattern())
 		return
 	}
 
-	m, err := parseMessage(msg.Data)
+	m, err := parseMessage(msg.GetData())
 	if err != nil {
 		ui.Alert(err.Error())
 		return
@@ -89,21 +88,21 @@ func (g *Gilmour) processMessage(msg *protocol.Message) {
 
 		opts := s.GetOpts()
 		if opts != nil && opts.isOneShot() {
-			ui.Message("Unsubscribing one shot response topic %v", msg.Topic)
-			go g.UnsubscribeReply(msg.Key, s)
+			ui.Message("Unsubscribing one shot response topic %v", msg.GetTopic())
+			go g.UnsubscribeReply(msg.GetPattern(), s)
 		}
 
 		if opts.GetGroup() != "" && opts.shouldSendResponse() {
 			if !g.backend.AcquireGroupLock(opts.GetGroup(), m.GetSender()) {
 				ui.Warn(
 					"Unable to acquire Lock. Topic %v Group %v Sender %v",
-					msg.Topic, opts.GetGroup(), m.GetSender(),
+					msg.GetTopic(), opts.GetGroup(), m.GetSender(),
 				)
 				continue
 			}
 		}
 
-		go g.handleRequest(s, msg.Topic, m)
+		go g.handleRequest(s, msg.GetTopic(), m)
 	}
 }
 
@@ -111,7 +110,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 	senderId := m.GetSender()
 
 	req := &Request{topic, m}
-	res := &Message{}
+	res := NewMessage()
 	res.setSender(responseTopic(senderId))
 
 	done := make(chan bool, 1)
@@ -171,13 +170,13 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 		// but the request had failed. This is automatically handled in case
 		// of a response being written via Publisher.
 		request := string(req.bytes())
-		errMsg := makeError(499, topic, request, "", req.Sender(), "")
+		errMsg := proto.MakeError(499, topic, request, "", req.Sender(), "")
 		g.reportError(errMsg)
 	}
 }
 
 func (g *Gilmour) timeoutMessage(senderId string) *Message {
-	msg := &Message{}
+	msg := NewMessage()
 	msg.setSender(senderId).SetCode(499).SetData("Execution timed out")
 	return msg
 }
@@ -189,7 +188,7 @@ func (g *Gilmour) sendTimeout(senderId, channel string) {
 	}
 }
 
-func (g *Gilmour) addBackend(backend Backend) {
+func (g *Gilmour) addBackend(backend proto.Backend) {
 	g.backend = backend
 }
 
@@ -198,7 +197,7 @@ func (g *Gilmour) getIdent() string {
 	defer g.identMutex.Unlock()
 
 	if g.ident == "" {
-		g.ident = makeIdent()
+		g.ident = proto.Ident()
 	}
 
 	return g.ident
@@ -295,39 +294,26 @@ func (g *Gilmour) unsubscribe(topic string, s *Subscription) {
 	}
 }
 
-/*
-Gilmour allows you to do more with service error messages by using one of the
-following policies:
+func (g *Gilmour) SupportedErrorPolicies() []string {
+	return g.backend.SupportedErrorPolicies()
+}
 
-	1) Publish.
-	2) Queue.
-	3) Ignore.
-
-Error messages are forwarded to the configured backend alongwith policy.
-*/
 func (g *Gilmour) SetErrorPolicy(policy string) {
-	if policy != protocol.ErrorPolicyQueue &&
-		policy != protocol.ErrorPolicyPublish &&
-		policy != protocol.ErrorPolicyIgnore {
-		panic(errors.New(fmt.Sprintf(
-			"error policy can only be %v, %v or %v",
-			protocol.ErrorPolicyQueue, protocol.ErrorPolicyPublish,
-			protocol.ErrorPolicyIgnore,
-		)))
+	err := g.backend.SetErrorPolicy(policy)
+	if err != nil {
+		panic(err)
 	}
-
-	g.errorPolicy = policy
 }
 
 //Error policy for this Gilmour engine.
 func (g *Gilmour) GetErrorPolicy() string {
-	return g.errorPolicy
+	return g.backend.GetErrorPolicy()
 }
 
-func (g *Gilmour) reportError(e *gilmourError) {
+func (g *Gilmour) reportError(e *proto.GilmourError) {
 	ui.Warn(
 		"Reporting Error. Code %v Sender %v Topic %v",
-		e.getCode(), e.getSender(), e.getTopic(),
+		e.GetCode(), e.GetSender(), e.GetTopic(),
 	)
 
 	err := g.backend.ReportError(g.GetErrorPolicy(), e)
@@ -390,7 +376,7 @@ func (g *Gilmour) request(topic string, msg *Message, opts *RequestOpts) (*Respo
 		msg = NewMessage()
 	}
 
-	sender := makeSenderId()
+	sender := proto.SenderId()
 	msg.setSender(sender)
 	respChannel := responseTopic(sender)
 
@@ -446,7 +432,7 @@ func (g *Gilmour) Signal(topic string, msg *Message) (sender string, err error) 
 		msg = NewMessage()
 	}
 
-	sender = makeSenderId()
+	sender = proto.SenderId()
 	msg.setSender(sender)
 	return sender, g.publish(g.slotDestination(topic), msg)
 }
@@ -465,7 +451,7 @@ func (g *Gilmour) publish(topic string, msg *Message) error {
 			}
 
 			g.reportError(
-				makeError(
+				proto.MakeError(
 					msg.GetCode(), topic, string(request), "", msg.GetSender(), "",
 				),
 			)
