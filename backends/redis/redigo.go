@@ -14,12 +14,10 @@ import (
 
 const (
 	defaultErrorQueue  = "gilmour.errorqueue"
-	defaultIdentKey    = "gilmour.known_host.health"
 	defaultErrorBuffer = 9999
 	errorPolicyQueue   = "queue"
 	errorPolicyPublish = "publish"
 	errorPolicyIgnore  = ""
-	errorTopic         = "gilmour.errors"
 )
 
 func MakeRedis(host, password string) *Redis {
@@ -124,7 +122,7 @@ func (r *Redis) ReportError(method string, message *proto.GilmourError) (err err
 
 	switch method {
 	case errorPolicyPublish:
-		_, err = r.Publish(errorTopic, *message)
+		_, err = r.Publish(proto.ErrorTopic(), *message)
 
 	case errorPolicyQueue:
 		msg, merr := (*message).Marshal()
@@ -170,10 +168,6 @@ func (r *Redis) Subscribe(topic, group string) (err error) {
 	return
 }
 
-func (r *Redis) getHealthIdent() string {
-	return defaultIdentKey
-}
-
 func (r *Redis) Publish(topic string, message interface{}) (sent bool, err error) {
 	var msg string
 	switch t := message.(type) {
@@ -210,14 +204,14 @@ func (r *Redis) ActiveIdents() (map[string]string, error) {
 	conn := r.getConn()
 	defer conn.Close()
 
-	return redis.StringMap(conn.Do("HGETALL", r.getHealthIdent()))
+	return redis.StringMap(conn.Do("HGETALL", proto.HealthIdent()))
 }
 
 func (r *Redis) RegisterIdent(uuid string) error {
 	conn := r.getConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HSET", r.getHealthIdent(), uuid, "true")
+	_, err := conn.Do("HSET", proto.HealthIdent(), uuid, "true")
 	return err
 }
 
@@ -225,7 +219,7 @@ func (r *Redis) UnregisterIdent(uuid string) error {
 	conn := r.getConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HDEL", r.getHealthIdent(), uuid)
+	_, err := conn.Do("HDEL", proto.HealthIdent(), uuid)
 	return err
 }
 

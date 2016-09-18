@@ -12,10 +12,6 @@ import (
 	"gopkg.in/gilmour-libs/gilmour-e-go.v5/ui"
 )
 
-func responseTopic(sender string) string {
-	return fmt.Sprintf("gilmour.response.%s", sender)
-}
-
 //Get a working Gilmour Engine powered by the backend provided.
 //Currently, only Redis is supported as a backend.
 func Get(backend proto.Backend) *Gilmour {
@@ -111,7 +107,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 
 	req := &Request{topic, m}
 	res := NewMessage()
-	res.setSender(responseTopic(senderId))
+	res.setSender(proto.ResponseTopic(senderId))
 
 	done := make(chan bool, 1)
 
@@ -326,7 +322,7 @@ func (g *Gilmour) requestDestination(topic string) string {
 	if strings.HasPrefix(topic, "gilmour.") {
 		return topic
 	} else {
-		return fmt.Sprintf("gilmour.request.%v", topic)
+		return proto.RequestTopic(topic)
 	}
 }
 
@@ -334,7 +330,7 @@ func (g *Gilmour) slotDestination(topic string) string {
 	if strings.HasPrefix(topic, "gilmour.") {
 		return topic
 	} else {
-		return fmt.Sprintf("gilmour.slot.%v", topic)
+		return proto.SlotTopic(topic)
 	}
 }
 
@@ -378,7 +374,7 @@ func (g *Gilmour) request(topic string, msg *Message, opts *RequestOpts) (*Respo
 
 	sender := proto.SenderId()
 	msg.setSender(sender)
-	respChannel := responseTopic(sender)
+	respChannel := proto.ResponseTopic(sender)
 
 	if opts == nil {
 		opts = NewRequestOpts()
