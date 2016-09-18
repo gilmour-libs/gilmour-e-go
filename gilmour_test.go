@@ -524,8 +524,10 @@ func TestPublisherTimeout(t *testing.T) {
 
 func TestSansListenerSlot(t *testing.T) {
 	_, err := engine.Signal("humpty-dumpty", nil)
-	if err != nil {
-		t.Error("Slots do not need recivers")
+	if err == nil {
+		t.Error("Slots return 404")
+	} else if !strings.Contains(err.Error(), "not received") {
+		t.Error("Slots without recivers should throw error.")
 	}
 }
 

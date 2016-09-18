@@ -459,5 +459,12 @@ func (g *Gilmour) publish(topic string, msg *Message) error {
 		}()
 	}
 
-	return g.backend.Publish(topic, msg)
+	sent, err := g.backend.Publish(topic, msg)
+	if err != nil {
+		return err
+	} else if !sent {
+		return errors.New(fmt.Sprintf("Mesage for %v was not received by anyone.", topic))
+	} else {
+		return err
+	}
 }

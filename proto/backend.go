@@ -12,7 +12,7 @@ type Backend interface {
 
 	Subscribe(topic, group string) error
 	Unsubscribe(topic string) error
-	Publish(topic string, msg interface{}) error
+	Publish(topic string, msg interface{}) (bool, error)
 
 	SetErrorPolicy(string) error
 	GetErrorPolicy() string
