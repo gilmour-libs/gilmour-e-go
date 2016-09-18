@@ -198,7 +198,12 @@ func (r *Redis) Publish(topic string, message interface{}) (sent bool, err error
 	defer conn.Close()
 
 	data, err := conn.Do("PUBLISH", topic, msg)
-	return data.(int64) > 0, err
+	num, num_ok := data.(int64)
+	if !num_ok {
+		log.Println("Response for Publish did not contain an Integer. Foud %v", data)
+	}
+
+	return num > 0, err
 }
 
 func (r *Redis) ActiveIdents() (map[string]string, error) {
