@@ -124,7 +124,7 @@ func (r *Redis) ReportError(method string, message *proto.GilmourError) (err err
 
 	switch method {
 	case errorPolicyPublish:
-		err = r.Publish(errorTopic, *message)
+		_, err = r.Publish(errorTopic, *message)
 
 	case errorPolicyQueue:
 		msg, merr := (*message).Marshal()
@@ -174,7 +174,7 @@ func (r *Redis) getHealthIdent() string {
 	return defaultIdentKey
 }
 
-func (r *Redis) Publish(topic string, message interface{}) (err error) {
+func (r *Redis) Publish(topic string, message interface{}) (sent bool, err error) {
 	var msg string
 	switch t := message.(type) {
 	case string:
@@ -197,8 +197,13 @@ func (r *Redis) Publish(topic string, message interface{}) (err error) {
 	conn := r.getConn()
 	defer conn.Close()
 
-	_, err = conn.Do("PUBLISH", topic, msg)
-	return
+	data, err := conn.Do("PUBLISH", topic, msg)
+	num, num_ok := data.(int64)
+	if !num_ok {
+		log.Println("Response for Publish did not contain an Integer. Foud %v", data)
+	}
+
+	return num > 0, err
 }
 
 func (r *Redis) ActiveIdents() (map[string]string, error) {
