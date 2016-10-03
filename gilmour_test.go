@@ -11,7 +11,7 @@ import (
 	"time"
 
 	r "gopkg.in/gilmour-libs/gilmour-e-go.v5/backends/redis"
-	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/kit"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v5/ui"
 )
 
@@ -57,7 +57,7 @@ func isTopicSubscribed(topic string, is_slot bool) (bool, error) {
 func TestHealthSubscribe(t *testing.T) {
 	engine.SetHealthCheckEnabled()
 
-	topic := proto.HealthTopic(engine.getIdent())
+	topic := kit.HealthTopic(engine.getIdent())
 	if has, _ := isReplySubscribed(topic); !has {
 		t.Error(topic, "should have been subscribed")
 	}
@@ -409,7 +409,7 @@ func TestHealthResponse(t *testing.T) {
 
 	data := NewMessage().SetData("is-healthy?")
 
-	req := engine.NewRequest(proto.HealthTopic(engine.getIdent()))
+	req := engine.NewRequest(kit.HealthTopic(engine.getIdent()))
 	resp, err := req.Execute(data)
 	if err != nil {
 		t.Error(err)

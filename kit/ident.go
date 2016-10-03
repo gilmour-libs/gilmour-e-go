@@ -1,4 +1,4 @@
-package proto
+package kit
 
 import (
 	"fmt"

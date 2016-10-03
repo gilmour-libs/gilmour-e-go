@@ -1,4 +1,4 @@
-package proto
+package kit
 
 import "fmt"
 
@@ -20,12 +20,4 @@ func RequestTopic(topic string) string {
 
 func SlotTopic(topic string) string {
 	return fmt.Sprintf("gilmour.slot.%v", topic)
-}
-
-func ErrorTopic() string {
-	return "gilmour.errors"
-}
-
-func ErrorQueue() string {
-	return "gilmour.errorqueue"
 }

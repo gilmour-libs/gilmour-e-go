@@ -8,13 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/kit"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v5/ui"
 )
 
 //Get a working Gilmour Engine powered by the backend provided.
 //Currently, only Redis is supported as a backend.
-func Get(backend proto.Backend) *Gilmour {
+func Get(backend backends.Backend) *Gilmour {
 	x := Gilmour{}
 	x.subscriber = newSubscriptionManager()
 	x.addBackend(backend)
@@ -25,7 +27,7 @@ type Gilmour struct {
 	enableHealthCheck bool
 	identMutex        sync.RWMutex
 	subscriberMutex   sync.RWMutex
-	backend           proto.Backend
+	backend           backends.Backend
 	ident             string
 	errorPolicy       string
 	subscriber        subscriber
@@ -107,7 +109,7 @@ func (g *Gilmour) handleRequest(s *Subscription, topic string, m *Message) {
 
 	req := &Request{topic, m}
 	res := NewMessage()
-	res.setSender(proto.ResponseTopic(senderId))
+	res.setSender(kit.ResponseTopic(senderId))
 
 	done := make(chan bool, 1)
 
@@ -184,7 +186,7 @@ func (g *Gilmour) sendTimeout(senderId, channel string) {
 	}
 }
 
-func (g *Gilmour) addBackend(backend proto.Backend) {
+func (g *Gilmour) addBackend(backend backends.Backend) {
 	g.backend = backend
 }
 
@@ -193,7 +195,7 @@ func (g *Gilmour) getIdent() string {
 	defer g.identMutex.Unlock()
 
 	if g.ident == "" {
-		g.ident = proto.Ident()
+		g.ident = kit.Ident()
 	}
 
 	return g.ident
@@ -322,7 +324,7 @@ func (g *Gilmour) requestDestination(topic string) string {
 	if strings.HasPrefix(topic, "gilmour.") {
 		return topic
 	} else {
-		return proto.RequestTopic(topic)
+		return kit.RequestTopic(topic)
 	}
 }
 
@@ -330,7 +332,7 @@ func (g *Gilmour) slotDestination(topic string) string {
 	if strings.HasPrefix(topic, "gilmour.") {
 		return topic
 	} else {
-		return proto.SlotTopic(topic)
+		return kit.SlotTopic(topic)
 	}
 }
 
@@ -372,9 +374,9 @@ func (g *Gilmour) request(topic string, msg *Message, opts *RequestOpts) (*Respo
 		msg = NewMessage()
 	}
 
-	sender := proto.SenderId()
+	sender := kit.SenderId()
 	msg.setSender(sender)
-	respChannel := proto.ResponseTopic(sender)
+	respChannel := kit.ResponseTopic(sender)
 
 	if opts == nil {
 		opts = NewRequestOpts()
@@ -428,7 +430,7 @@ func (g *Gilmour) Signal(topic string, msg *Message) (sender string, err error) 
 		msg = NewMessage()
 	}
 
-	sender = proto.SenderId()
+	sender = kit.SenderId()
 	msg.setSender(sender)
 	return sender, g.publish(g.slotDestination(topic), msg)
 }

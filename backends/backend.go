@@ -1,11 +1,29 @@
-package proto
+package backends
 
-type BackendWriter interface {
+import (
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
+)
+
+const (
+	ErrorPolicyQueue   = "queue"
+	ErrorPolicyPublish = "publish"
+	ErrorPolicyIgnore  = ""
+)
+
+func ErrorTopic() string {
+	return "gilmour.errors"
+}
+
+func ErrorQueue() string {
+	return "gilmour.errorqueue"
+}
+
+type Writer interface {
 	Marshal() ([]byte, error)
 }
 
 type Backend interface {
-	Start(chan<- *Packet)
+	Start(chan<- *proto.Packet)
 	Stop()
 
 	HasActiveSubscribers(topic string) (bool, error)
@@ -17,7 +35,7 @@ type Backend interface {
 	SetErrorPolicy(string) error
 	GetErrorPolicy() string
 	SupportedErrorPolicies() []string
-	ReportError(method string, err *GilmourError) error
+	ReportError(method string, err *proto.GilmourError) error
 
 	AcquireGroupLock(group, sender string) bool
 

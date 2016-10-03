@@ -7,17 +7,14 @@ import (
 	"strings"
 	"sync"
 
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/kit"
 	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
 
 	"github.com/garyburd/redigo/redis"
 )
 
-const (
-	defaultErrorBuffer = 9999
-	errorPolicyQueue   = "queue"
-	errorPolicyPublish = "publish"
-	errorPolicyIgnore  = ""
-)
+const defaultErrorBuffer = 9999
 
 func MakeRedis(host, password string) *Redis {
 	redisPool := getPool(host, password)
@@ -31,25 +28,35 @@ type Redis struct {
 	errorPolicy string
 	redisPool   *redis.Pool
 	pubsubConn  redis.PubSubConn
-	sync.Mutex
+	sync.RWMutex
 }
 
 func (r *Redis) SupportedErrorPolicies() []string {
-	return []string{errorPolicyQueue, errorPolicyPublish, errorPolicyIgnore}
+	return []string{
+		backends.ErrorPolicyQueue,
+		backends.ErrorPolicyPublish,
+		backends.ErrorPolicyIgnore,
+	}
 }
 
 func (r *Redis) SetErrorPolicy(policy string) error {
-	if policy != errorPolicyQueue &&
-		policy != errorPolicyPublish &&
-		policy != errorPolicyIgnore {
-		return errors.New(fmt.Sprintf("Invalid error policy"))
+	r.Lock()
+	defer r.Unlock()
+
+	for _, p := range r.SupportedErrorPolicies() {
+		if policy == p {
+			r.errorPolicy = policy
+			return nil
+		}
 	}
 
-	r.errorPolicy = policy
-	return nil
+	return errors.New(fmt.Sprintf("Invalid error policy"))
 }
 
 func (r *Redis) GetErrorPolicy() string {
+	r.RLock()
+	defer r.RUnlock()
+
 	return r.errorPolicy
 }
 
@@ -112,7 +119,7 @@ func (r *Redis) AcquireGroupLock(group, sender string) bool {
 }
 
 func (r *Redis) getErrorQueue() string {
-	return proto.ErrorQueue()
+	return backends.ErrorQueue()
 }
 
 func (r *Redis) ReportError(method string, message *proto.GilmourError) (err error) {
@@ -120,10 +127,10 @@ func (r *Redis) ReportError(method string, message *proto.GilmourError) (err err
 	defer conn.Close()
 
 	switch method {
-	case errorPolicyPublish:
-		_, err = r.Publish(proto.ErrorTopic(), *message)
+	case backends.ErrorPolicyPublish:
+		_, err = r.Publish(backends.ErrorTopic(), *message)
 
-	case errorPolicyQueue:
+	case backends.ErrorPolicyQueue:
 		msg, merr := (*message).Marshal()
 		if merr != nil {
 			err = merr
@@ -172,7 +179,7 @@ func (r *Redis) Publish(topic string, message interface{}) (sent bool, err error
 	switch t := message.(type) {
 	case string:
 		msg = t
-	case proto.BackendWriter:
+	case backends.Writer:
 		msg2, err2 := t.Marshal()
 		if err != nil {
 			err = err2
@@ -203,14 +210,14 @@ func (r *Redis) ActiveIdents() (map[string]string, error) {
 	conn := r.getConn()
 	defer conn.Close()
 
-	return redis.StringMap(conn.Do("HGETALL", proto.HealthIdent()))
+	return redis.StringMap(conn.Do("HGETALL", kit.HealthIdent()))
 }
 
 func (r *Redis) RegisterIdent(uuid string) error {
 	conn := r.getConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HSET", proto.HealthIdent(), uuid, "true")
+	_, err := conn.Do("HSET", kit.HealthIdent(), uuid, "true")
 	return err
 }
 
@@ -218,7 +225,7 @@ func (r *Redis) UnregisterIdent(uuid string) error {
 	conn := r.getConn()
 	defer conn.Close()
 
-	_, err := conn.Do("HDEL", proto.HealthIdent(), uuid)
+	_, err := conn.Do("HDEL", kit.HealthIdent(), uuid)
 	return err
 }
 

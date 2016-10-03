@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v5/proto"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/kit"
 )
 
 type pubMsg struct {
@@ -124,6 +124,6 @@ func parseMessage(data interface{}) (*Message, error) {
 
 func NewMessage() *Message {
 	x := &Message{}
-	x.setSender(proto.SenderId())
+	x.setSender(kit.SenderId())
 	return x
 }
