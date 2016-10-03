@@ -1,23 +1,23 @@
-package redis
+package backends
 
 import (
 	"os"
 	"testing"
 
-	"gopkg.in/gilmour-libs/gilmour-e-go.v5/backends"
+	"gopkg.in/gilmour-libs/gilmour-e-go.v5/backends/redis"
 )
 
-var backend backends.Backend
+var backend Backend
 
-func makeBackend() backends.Backend {
-	return MakeRedis("localhost", "")
+func makeBackend() Backend {
+	return redis.MakeRedis("localhost", "")
 }
 
 func TestSupportedPolicies(t *testing.T) {
 	can_be := []string{
-		backends.ErrorPolicyQueue,
-		backends.ErrorPolicyPublish,
-		backends.ErrorPolicyIgnore,
+		ErrorPolicyQueue,
+		ErrorPolicyPublish,
+		ErrorPolicyIgnore,
 	}
 
 	policies := backend.SupportedErrorPolicies()
